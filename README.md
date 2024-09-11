@@ -48,5 +48,6 @@ Download the WebDriver for your preferred browser (e.g., Chrome or Firefox) and 
 5.**Run the Streamlit app:**
 streamlit run main.py
 
+<h2>Author-Muhammad Raisul Maharub</h2>
 
 
