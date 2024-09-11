@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI Web Scraper</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+  <div class="background-slider">
+    <!-- Slideshow container for background images -->
+    <div class="slide fade" style="background-image: url('E:/Web Scrapper/images/web_images/image1.jpg');"></div>
+    <div class="slide fade" style="background-image: url('E:/Web Scrapper/images/web_images/image2.jpg');"></div>
+    <div class="slide fade" style="background-image: url('E:/Web Scrapper/images/web_images/image3.jpg');"></div>
+  </div>
+
+  <div class="container">
+    <div class="header">
+      <h1>AI Web Scraper</h1>
+    </div>
+
+    <div class="content">
+      <form id="scrape-form">
+        <label for="url-input">Enter Website URL:</label>
+        <input type="text" id="url-input" placeholder="https://example.com" required>
+        <button type="submit" id="scrape-btn">Scrape Website</button>
+      </form>
+
+      <div class="result">
+        <textarea id="scraped-content" rows="10" placeholder="Scraped content will appear here..." readonly></textarea>
+      </div>
+
+      <div class="controls">
+        <button id="stop-btn">Stop Parsing</button>
+        <label for="image-upload">Upload Background Image:</label>
+        <input type="file" id="image-upload" accept="image/*">
+      </div>
+    </div>
+  </div>
+
+  <script src="scripts.js"></script>
+</body>
+</html>

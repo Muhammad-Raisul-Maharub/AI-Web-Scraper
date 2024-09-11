@@ -1,0 +1,123 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+  }
+  
+  body {
+    font-family: 'Arial', sans-serif;
+    color: #fff;
+    text-align: center;
+    background: #333;
+    overflow: hidden;
+  }
+  
+  .container {
+    position: relative;
+    z-index: 10;
+    padding: 20px;
+    max-width: 800px;
+    margin: 0 auto;
+    background: rgba(0, 0, 0, 0.5);
+    border-radius: 10px;
+  }
+  
+  .header h1 {
+    font-size: 2.5rem;
+    margin-bottom: 20px;
+  }
+  
+  .content form {
+    margin-bottom: 20px;
+  }
+  
+  #url-input {
+    width: 60%;
+    padding: 10px;
+    margin: 10px 0;
+    border: 2px solid #fff;
+    border-radius: 5px;
+  }
+  
+  #scrape-btn, #stop-btn {
+    padding: 10px 20px;
+    background-color: #28a745;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    color: #fff;
+    margin-top: 10px;
+  }
+  
+  #scrape-btn:hover, #stop-btn:hover {
+    background-color: #218838;
+  }
+  
+  #scraped-content {
+    width: 100%;
+    padding: 10px;
+    border-radius: 5px;
+    margin-top: 20px;
+  }
+  
+  .controls {
+    margin-top: 20px;
+  }
+  
+  label {
+    display: block;
+    margin-bottom: 10px;
+  }
+  
+  input[type="file"] {
+    display: inline-block;
+  }
+  
+  .background-slider {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100vh; /* Ensure it covers the viewport */
+    z-index: -1;
+    overflow: hidden; /* Ensure slides do not overflow */
+  }
+  
+  .slide {
+    display: none;
+    background-size: cover;
+    background-position: center;
+    width: 100%;
+    height: 100vh; /* Ensure full height for slides */
+    position: absolute;
+    top: 0;
+    left: 0;
+  }
+  
+  .fade {
+    animation: fadeEffect 1.5s;
+  }
+  
+  @keyframes fadeEffect {
+    from { opacity: 0.4; }
+    to { opacity: 1; }
+  }
+  
+  /* Dark mode styles */
+  body.dark-mode {
+    background: #121212;
+    color: #e0e0e0;
+  }
+  
+  body.dark-mode .container {
+    background: rgba(0, 0, 0, 0.8);
+  }
+  
+  body.dark-mode #scrape-btn, body.dark-mode #stop-btn {
+    background-color: #1e1e1e;
+  }
+  
+  body.dark-mode #scrape-btn:hover, body.dark-mode #stop-btn:hover {
+    background-color: #333;
+  }
+  
