@@ -570,6 +570,96 @@ def extract_animation_assets(html_content: str, base_url: str) -> dict:
     return results
 
 
+def scrape_animations_from_driver(driver, base_url: str = "") -> dict:
+    """
+    Extract animations dynamically from an active Selenium WebDriver session.
+    Combines static HTML parsing with runtime CSSOM extraction to capture
+    cross-origin keyframes, dynamically injected animations, and media loops.
+    """
+    if not base_url:
+        try:
+            base_url = driver.current_url
+        except Exception:
+            base_url = ""
+
+    # 1. Base extraction from DOM source
+    try:
+        html = driver.page_source
+    except Exception:
+        html = ""
+
+    results = scrape_animations(html, base_url=base_url)
+
+    # 2. Dynamic runtime CSSOM keyframe extraction
+    cssom_script = """
+    const keyframes = [];
+    for (let i = 0; i < document.styleSheets.length; i++) {
+        try {
+            const sheet = document.styleSheets[i];
+            const rules = sheet.cssRules || sheet.rules;
+            if (!rules) continue;
+            for (let j = 0; j < rules.length; j++) {
+                const rule = rules[j];
+                if (rule.type === CSSRule.KEYFRAMES_RULE || rule.type === 7) {
+                    keyframes.push({
+                        name: rule.name,
+                        css: rule.cssText.slice(0, 400)
+                    });
+                }
+            }
+        } catch (e) {
+            // Bypass cross-origin stylesheet errors
+            continue;
+        }
+    }
+    return keyframes;
+    """
+    try:
+        dynamic_keyframes = driver.execute_script(cssom_script) or []
+        existing_names = {kf["name"] for kf in results["css_keyframes"]}
+        for kf in dynamic_keyframes:
+            if kf.get("name") and kf["name"] not in existing_names:
+                results["css_keyframes"].append(kf)
+                existing_names.add(kf["name"])
+    except Exception as e:
+        logging.debug(f"CSSOM keyframe extraction exception: {e}")
+
+    # 3. Dynamic runtime video loop extraction
+    video_script = """
+    const videos = [];
+    document.querySelectorAll('video').forEach(v => {
+        const src = v.currentSrc || v.src;
+        if (src) videos.push(src);
+        v.querySelectorAll('source').forEach(s => {
+            if (s.src) videos.push(s.src);
+        });
+    });
+    return Array.from(new Set(videos));
+    """
+    try:
+        dynamic_videos = driver.execute_script(video_script) or []
+        existing_media_urls = {m["url"] for m in results["motion_media"]}
+        for vurl in dynamic_videos:
+            if vurl not in existing_media_urls:
+                results["motion_media"].append({"type": "video-loop", "url": vurl})
+                existing_media_urls.add(vurl)
+    except Exception as e:
+        logging.debug(f"Dynamic video extraction exception: {e}")
+
+    # Recalculate total count
+    results["total_assets_count"] = (
+        len(results["lottie_files"]) +
+        len(results["rive_files"]) +
+        len(results["svg_animations"]) +
+        len(results["motion_media"]) +
+        len(results["animation_libraries"]) +
+        len(results["css_keyframes"])
+    )
+
+    return results
+
+
+
 def bundle_animations_zip(assets_dict: dict, base_url: str = None) -> bytes:
     """
     Download discovered animation assets and package them into an in-memory ZIP archive.
