@@ -70,7 +70,20 @@ cp .env.example .env
 
 ---
 
-## 🖥️ Running the Application
+## 🐳 Running with Docker (Recommended)
+
+If you have Docker installed, launch both the **Streamlit Web Dashboard** and the **FastAPI Backend** with a single command:
+
+```bash
+docker compose up --build
+```
+
+* 🌐 **Streamlit Web Dashboard:** [http://localhost:8501](http://localhost:8501)
+* 🚀 **FastAPI Interactive Docs:** [http://localhost:8000/docs](http://localhost:8000/docs)
+
+---
+
+## 🖥️ Running Locally (Without Docker)
 
 ### 1. Interactive Streamlit Dashboard (With AI Copilot)
 ```powershell

@@ -1,0 +1,32 @@
+# Git
+.git
+.gitignore
+
+# Python virtual environments & bytecode
+venv/
+env/
+ai/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Local SQLite databases & cache
+*.db
+*.sqlite3
+
+# Screenshots
+screenshots/
+*.png
+
+# Environment variables
+.env
+.env.local
+
+# Jupyter checkpoints
+.ipynb_checkpoints/
+*/.ipynb_checkpoints/*
+
+# IDE and Editor configs
+.vscode/
+.idea/

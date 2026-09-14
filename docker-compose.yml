@@ -1,0 +1,41 @@
+services:
+  # Interactive Streamlit Web UI Dashboard & AI Copilot
+  streamlit:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ai_web_scraper_ui
+    restart: unless-stopped
+    ports:
+      - "8501:8501"
+    command: ["streamlit", "run", "main.py", "--server.port=8501", "--server.address=0.0.0.0"]
+    volumes:
+      - ./screenshots:/app/screenshots
+      - scraper_data:/app
+    environment:
+      - PYTHONUNBUFFERED=1
+    env_file:
+      - path: .env
+        required: false
+
+  # Headless FastAPI REST API Backend
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ai_web_scraper_api
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    command: ["uvicorn", "api:app", "--host", "0.0.0.0", "--port", "8000"]
+    volumes:
+      - ./screenshots:/app/screenshots
+      - scraper_data:/app
+    environment:
+      - PYTHONUNBUFFERED=1
+    env_file:
+      - path: .env
+        required: false
+
+volumes:
+  scraper_data:
