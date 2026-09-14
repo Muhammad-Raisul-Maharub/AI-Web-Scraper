@@ -8,6 +8,7 @@ An intelligent, multi-provider web scraping and structured data extraction platf
 
 | Feature | Description |
 | :--- | :--- |
+| **🕒 Automated Scheduler & Monitor** | Background daemon thread powered by SQLite that executes recurring scrapes (15m, 1h, 6h, 12h, 24h, custom), detects price/content diffs, and fires webhook alerts. |
 | **🎬 Animation & Motion Asset Extraction** | Detects, extracts, and bundles Lottie JSON, Rive (`.riv`), animated SVGs, GIF/WebM loops, animation JS libraries (GSAP, Three.js), and CSS `@keyframes` with one-click ZIP download. |
 | **🎯 Scraping Target Type Selector** | Switch between Cleaned Text / DOM (for AI analysis) and Animation Assets in the UI or programmatically. |
 | **💬 Autonomous AI Copilot** | Interactive conversational agent in Streamlit with multi-turn memory and autonomous tool calling across Gemini, OpenAI, and Ollama. |
@@ -93,10 +94,11 @@ docker compose up --build
 streamlit run main.py
 ```
 * **Tab 1 (💬 AI Assistant Copilot):** Converse naturally with the AI Copilot. It plans and executes scraping tools autonomously to answer questions, extract tables, or capture screenshots.
-* **Tab 2 (🔍 Scrape & Extract):** Single-page scraping, screenshot capture, Pydantic schema templates, Multimodal Vision mode, and CSV/JSON downloads.
+* **Tab 2 (🔍 Scrape & Extract):** Single-page scraping, animation extraction, screenshot capture, Pydantic schema templates, Multimodal Vision mode, and CSV/JSON/ZIP downloads.
 * **Tab 3 (🌐 Crawl & Pagination):** Domain-restricted crawling, infinite scroll feeding, and multi-page pagination.
 * **Tab 4 (⚡ Keyword Search):** Instant zero-LLM keyword filter.
 * **Tab 5 (📊 History & Price Tracker):** Database history and detected price change alerts.
+* **Tab 6 (🕒 Automated Scheduler & Monitor):** Configure background recurring scrape jobs, custom minute/preset intervals, price diff detection, and webhook alerts.
 
 ---
 
@@ -125,6 +127,8 @@ python mcp_server.py
 - `scrape_page`: Fetches and cleans any URL.
 - `extract_structured_data`: Extracts Pydantic records into JSON.
 - `extract_web_animations`: Extracts Lottie, Rive, SVGs, GIFs, JS libs, and CSS keyframes.
+- `schedule_scrape_job`: Schedules recurring background scraping tasks with interval & alerts.
+- `list_scrape_jobs`: Lists all active/paused monitor jobs and next execution timestamps.
 - `take_screenshot`: Captures high-res full-page screenshots.
 - `query_scrape_history`: Retrieves previous scrape logs.
 - `send_webhook_alert`: Dispatches alerts to Discord or Slack.
@@ -196,8 +200,11 @@ python cli.py --url "https://quotes.toscrape.com" --screenshot quote.png --promp
 ├── plugins/                     # Extensible custom tools directory
 │   └── social_extractor.py      # Example plugin: social media link extractor
 ├── requirements.txt             # Pinned project dependencies
+├── scheduler.py                # Background scraping daemon & autonomous monitor
 ├── schemas.py                   # Pydantic extraction models & dynamic schema generator
 ├── scrape.py                    # Hybrid scraping engine, screenshot capture & pagination
+├── tests/                       # Automated test suite (unittest compatible)
+│   └── test_scraper.py          # Unit & integration tests for scraping, animations, scheduler
 ├── tools.py                     # Extensible Tool Registry & schema generators
 ├── webhook.py                   # Discord, Slack & generic webhook dispatcher
 └── README.md                    # Project documentation

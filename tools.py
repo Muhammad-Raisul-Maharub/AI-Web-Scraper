@@ -218,6 +218,95 @@ def tool_extract_web_animations(url: str, mode: str = "fast") -> Dict[str, Any]:
     return assets
 
 
+@register_tool(
+    name="schedule_scrape_job",
+    description="Schedule an automated recurring background scrape job for a URL with interval, optional template or prompt, and webhook alert.",
+    parameters={
+        "type": "object",
+        "properties": {
+            "name": {"type": "string", "description": "Descriptive title for the scheduled monitor job."},
+            "url": {"type": "string", "description": "Target webpage URL to monitor."},
+            "interval_minutes": {"type": "integer", "description": "Run frequency in minutes (e.g. 15, 60, 360)."},
+            "scrape_type": {
+                "type": "string",
+                "enum": ["text", "animations"],
+                "description": "Whether to extract structured text or monitor animation assets (default: 'text')."
+            },
+            "template": {
+                "type": "string",
+                "enum": ["ecommerce", "jobs", "realestate", "articles", "quotes"],
+                "description": "Optional schema template for structured data extraction."
+            },
+            "prompt": {"type": "string", "description": "Custom extraction instructions for the AI model."},
+            "webhook_url": {"type": "string", "description": "Discord or Slack webhook URL to receive change alerts."},
+            "alert_on_change_only": {"type": "boolean", "description": "Only send webhook alert when content/price shifts are detected (default: true)."}
+        },
+        "required": ["name", "url", "interval_minutes"]
+    }
+)
+def tool_schedule_scrape_job(
+    name: str,
+    url: str,
+    interval_minutes: int = 60,
+    scrape_type: str = "text",
+    template: Optional[str] = None,
+    prompt: Optional[str] = None,
+    webhook_url: Optional[str] = None,
+    alert_on_change_only: bool = True
+) -> Dict[str, Any]:
+    import scheduler
+    job_id = scheduler.create_job(
+        name=name,
+        url=url,
+        mode="fast",
+        scrape_type=scrape_type,
+        template=template,
+        prompt=prompt,
+        interval_minutes=interval_minutes,
+        webhook_url=webhook_url,
+        alert_on_change_only=alert_on_change_only
+    )
+    job = scheduler.get_job(job_id)
+    return {
+        "success": True,
+        "message": f"Successfully scheduled monitor job #{job_id} ('{name}') every {interval_minutes} minutes.",
+        "job": job
+    }
+
+
+@register_tool(
+    name="list_scrape_jobs",
+    description="List all active and paused recurring scrape jobs and their next scheduled execution times.",
+    parameters={
+        "type": "object",
+        "properties": {}
+    }
+)
+def tool_list_scrape_jobs() -> Dict[str, Any]:
+    import scheduler
+    jobs = scheduler.list_jobs()
+    return {
+        "total_jobs": len(jobs),
+        "jobs": jobs
+    }
+
+
+@register_tool(
+    name="trigger_scrape_job",
+    description="Manually trigger immediate execution of a scheduled recurring scrape job.",
+    parameters={
+        "type": "object",
+        "properties": {
+            "job_id": {"type": "integer", "description": "The ID of the scheduled job to run."}
+        },
+        "required": ["job_id"]
+    }
+)
+def tool_trigger_scrape_job(job_id: int) -> Dict[str, Any]:
+    import scheduler
+    return scheduler.trigger_job_now(job_id)
+
+
 # ==============================================================================
 # TOOL REGISTRY MANAGEMENT & EXPORTS
 # ==============================================================================

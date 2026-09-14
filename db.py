@@ -5,14 +5,19 @@ import json
 import re
 from datetime import datetime
 from typing import List, Dict, Any, Optional
+from contextlib import contextmanager
 
 DB_FILE = "scraper.db"
 
 
+@contextmanager
 def get_db():
     conn = sqlite3.connect(DB_FILE)
     conn.row_factory = sqlite3.Row
-    return conn
+    try:
+        yield conn
+    finally:
+        conn.close()
 
 
 def init_db():

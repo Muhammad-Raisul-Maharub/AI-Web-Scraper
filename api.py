@@ -171,3 +171,103 @@ def history_endpoint(limit: int = Query(10, ge=1, le=50)):
         "recent_scrapes": get_recent_scrapes(limit=limit),
         "recent_extractions": get_recent_extractions(limit=limit)
     }
+
+
+# ==============================================================================
+# SCHEDULED RECURRING SCRAPE JOBS & AUTONOMOUS MONITOR
+# ==============================================================================
+
+class CreateJobRequest(BaseModel):
+    name: str = Field(..., description="Descriptive job title")
+    url: str = Field(..., description="Target website URL")
+    mode: str = Field("fast", description="'fast', 'local', or 'bright_data'")
+    scrape_type: str = Field("text", description="'text' or 'animations'")
+    template: Optional[str] = Field(None, description="Schema template (e.g. 'ecommerce')")
+    prompt: Optional[str] = Field(None, description="Custom extraction instructions")
+    interval_minutes: int = Field(60, ge=1, description="Interval in minutes")
+    webhook_url: Optional[str] = Field(None, description="Discord/Slack/Zapier webhook URL")
+    alert_on_change_only: bool = Field(True, description="Only trigger alerts when price/content shifts occur")
+
+
+@app.get("/api/jobs")
+def list_jobs_endpoint():
+    """List all scheduled recurring scrape jobs with their status and next run times."""
+    import scheduler
+    return {"jobs": scheduler.list_jobs()}
+
+
+@app.post("/api/jobs")
+def create_job_endpoint(req: CreateJobRequest):
+    """Register a new recurring scrape job for background execution."""
+    import scheduler
+    try:
+        job_id = scheduler.create_job(
+            name=req.name,
+            url=req.url,
+            mode=req.mode,
+            scrape_type=req.scrape_type,
+            template=req.template,
+            prompt=req.prompt,
+            interval_minutes=req.interval_minutes,
+            webhook_url=req.webhook_url,
+            alert_on_change_only=req.alert_on_change_only
+        )
+        return {
+            "success": True,
+            "message": f"Job #{job_id} ('{req.name}') scheduled successfully.",
+            "job": scheduler.get_job(job_id)
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/jobs/{job_id}/logs")
+def get_job_logs_endpoint(job_id: int, limit: int = Query(20, ge=1, le=100)):
+    """Retrieve execution history logs for a specific scheduled job."""
+    import scheduler
+    job = scheduler.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail=f"Job #{job_id} not found.")
+    return {
+        "job": job,
+        "logs": scheduler.get_job_logs(job_id, limit=limit)
+    }
+
+
+@app.post("/api/jobs/{job_id}/run")
+def trigger_job_endpoint(job_id: int):
+    """Manually trigger immediate execution of a scheduled scrape job."""
+    import scheduler
+    try:
+        result = scheduler.trigger_job_now(job_id)
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.patch("/api/jobs/{job_id}/toggle")
+def toggle_job_endpoint(job_id: int):
+    """Pause or resume a scheduled job."""
+    import scheduler
+    success = scheduler.toggle_job(job_id)
+    if not success:
+        raise HTTPException(status_code=404, detail=f"Job #{job_id} not found.")
+    job = scheduler.get_job(job_id)
+    return {
+        "success": True,
+        "is_active": bool(job["is_active"]),
+        "status": "active" if job["is_active"] else "paused"
+    }
+
+
+@app.delete("/api/jobs/{job_id}")
+def delete_job_endpoint(job_id: int):
+    """Delete a scheduled job and its execution history."""
+    import scheduler
+    success = scheduler.delete_job(job_id)
+    if not success:
+        raise HTTPException(status_code=404, detail=f"Job #{job_id} not found.")
+    return {"success": True, "message": f"Job #{job_id} deleted."}
+

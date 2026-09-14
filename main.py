@@ -29,8 +29,12 @@ from db import (
 from webhook import send_webhook
 from tools import get_all_tools
 from assistant import run_copilot_turn
+import scheduler
 
 load_dotenv()
+
+# Start Background Scheduler Daemon
+scheduler_daemon = scheduler.get_scheduler()
 
 # Page Setup
 st.set_page_config(
@@ -191,12 +195,13 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-tab_copilot, tab1, tab2, tab3, tab4 = st.tabs([
+tab_copilot, tab1, tab2, tab3, tab4, tab_scheduler = st.tabs([
     "💬 AI Assistant Copilot",
     "🔍 Scrape & Extract",
     "🌐 Crawl & Pagination",
     "⚡ Quick Keyword Search",
-    "📊 History & Price Tracker"
+    "📊 History & Price Tracker",
+    "🕒 Automated Scheduler & Monitor"
 ])
 
 # ==========================================
@@ -772,3 +777,140 @@ with tab4:
             st.dataframe(pd.DataFrame(display_ext), use_container_width=True)
         else:
             st.info("No extraction records logged yet.")
+
+
+# ==========================================
+# TAB 6: Automated Scheduler & Background Monitor
+# ==========================================
+with tab_scheduler:
+    st.subheader("🕒 Automated Recurring Scrapes & Autonomous Monitor")
+    st.write("Configure background schedules to monitor target websites periodically, track price/content shifts, and send alerts.")
+
+    jobs = scheduler.list_jobs()
+    active_jobs = [j for j in jobs if j["is_active"]]
+
+    col_sm1, col_sm2, col_sm3 = st.columns(3)
+    col_sm1.metric("Total Jobs", len(jobs))
+    col_sm2.metric("Active Monitors", len(active_jobs))
+    col_sm3.metric("Background Daemon", "🟢 Running" if scheduler_daemon.is_running() else "🔴 Stopped")
+
+    # Expander to schedule a new job
+    with st.expander("➕ Create New Scheduled Scrape Monitor", expanded=len(jobs) == 0):
+        with st.form("new_schedule_form"):
+            col_f1, col_f2 = st.columns(2)
+            with col_f1:
+                sched_name = st.text_input("Job Name", placeholder="e.g. Daily Books Price Monitor")
+                sched_url = st.text_input("Target Webpage URL", placeholder="https://books.toscrape.com")
+            with col_f2:
+                sched_mode = st.selectbox("Scraping Engine", ["fast", "local", "bright_data"], index=0)
+                sched_type = st.selectbox("Scrape Target", ["text", "animations"], format_func=lambda x: "📄 Structured Text / DOM" if x == "text" else "🎬 Animations & Motion Assets")
+
+            # Extraction config if text
+            col_e1, col_e2 = st.columns(2)
+            with col_e1:
+                template_opts = ["None (Clean DOM Only)"] + list(EXTRACTION_TEMPLATES.keys())
+                sched_template = st.selectbox("Extraction Template", template_opts)
+            with col_e2:
+                sched_prompt = st.text_input("Custom Extraction Prompt", placeholder="e.g. Extract book titles and prices into structured JSON")
+
+            # Frequency & Alerts
+            col_freq, col_int = st.columns(2)
+            with col_freq:
+                freq_preset = st.selectbox(
+                    "Frequency Preset",
+                    ["Every 15 Minutes", "Every 1 Hour", "Every 6 Hours", "Every 12 Hours", "Every 24 Hours", "Custom Interval (Mins)"]
+                )
+            with col_int:
+                preset_map = {
+                    "Every 15 Minutes": 15,
+                    "Every 1 Hour": 60,
+                    "Every 6 Hours": 360,
+                    "Every 12 Hours": 720,
+                    "Every 24 Hours": 1440
+                }
+                if freq_preset == "Custom Interval (Mins)":
+                    sched_interval = st.number_input("Interval (Minutes)", min_value=1, max_value=10080, value=30)
+                else:
+                    sched_interval = preset_map[freq_preset]
+                    st.caption(f"Will trigger every **{sched_interval} minutes**.")
+
+            col_wb1, col_wb2 = st.columns([3, 1])
+            with col_wb1:
+                sched_webhook = st.text_input("Alert Webhook URL (Discord / Slack / Generic)", placeholder="https://discord.com/api/webhooks/...")
+            with col_wb2:
+                sched_alert_change = st.checkbox("Alert on change only", value=True, help="Only fire webhook when content diff or price shift occurs.")
+
+            submit_job = st.form_submit_button("🚀 Schedule Background Job", type="primary")
+
+            if submit_job:
+                if not sched_name.strip() or not sched_url.strip():
+                    st.error("Please provide both a Job Name and a valid Target URL.")
+                else:
+                    template_val = sched_template if sched_template != "None (Clean DOM Only)" else None
+                    job_id = scheduler.create_job(
+                        name=sched_name.strip(),
+                        url=sched_url.strip(),
+                        mode=sched_mode,
+                        scrape_type=sched_type,
+                        template=template_val,
+                        prompt=sched_prompt.strip() if sched_prompt else None,
+                        interval_minutes=int(sched_interval),
+                        webhook_url=sched_webhook.strip() if sched_webhook else None,
+                        alert_on_change_only=sched_alert_change
+                    )
+                    st.success(f"Job #{job_id} ('{sched_name}') scheduled successfully!")
+                    st.rerun()
+
+    # Active and Configured Jobs List
+    st.markdown("### 📋 Configured Monitor Jobs")
+    if not jobs:
+        st.info("No scheduled jobs found. Create one above to begin autonomous monitoring!")
+    else:
+        for j in jobs:
+            status_icon = "🟢 ACTIVE" if j["is_active"] else "⏸️ PAUSED"
+            expander_title = f"{status_icon} | #{j['id']} - {j['name']} (Every {j['interval_minutes']}m) ➔ {j['url'][:40]}..."
+
+            with st.expander(expander_title, expanded=False):
+                col_det1, col_det2, col_det3 = st.columns(3)
+                col_det1.write(f"**URL:** [{j['url']}]({j['url']})")
+                col_det1.write(f"**Engine:** `{j['mode']}` | **Type:** `{j['scrape_type']}`")
+                col_det2.write(f"**Next Run:** `{j['next_run_at'] or 'Paused'}`")
+                col_det2.write(f"**Last Run:** `{j['last_run_at'] or 'Never'}` ({j['last_status']})")
+                col_det3.write(f"**Alerts:** `{'Change only' if j['alert_on_change_only'] else 'Every run'}`")
+                if j["webhook_url"]:
+                    col_det3.write(f"**Webhook:** `{j['webhook_url'][:35]}...`")
+
+                # Action buttons
+                col_act1, col_act2, col_act3 = st.columns([1, 1, 1])
+                with col_act1:
+                    if st.button("▶️ Run Now", key=f"run_{j['id']}"):
+                        with st.spinner(f"Running job #{j['id']}..."):
+                            res = scheduler.trigger_job_now(j["id"])
+                            st.write(f"**Result:** {res['summary']}")
+                            st.rerun()
+                with col_act2:
+                    toggle_label = "⏸️ Pause" if j["is_active"] else "▶️ Resume"
+                    if st.button(toggle_label, key=f"toggle_{j['id']}"):
+                        scheduler.toggle_job(j["id"])
+                        st.rerun()
+                with col_act3:
+                    if st.button("🗑️ Delete", key=f"del_{j['id']}", type="secondary"):
+                        scheduler.delete_job(j["id"])
+                        st.rerun()
+
+                # Execution History for this Job
+                logs = scheduler.get_job_logs(j["id"], limit=5)
+                if logs:
+                    st.caption("Recent Execution Logs:")
+                    log_df = pd.DataFrame([
+                        {
+                            "Run Time": l["run_at"],
+                            "Status": l["status"],
+                            "Summary": l["summary"],
+                            "Diff Detected": "🔔 Yes" if l["diff_detected"] else "No"
+                        }
+                        for l in logs
+                    ])
+                    st.dataframe(log_df, use_container_width=True)
+                else:
+                    st.caption("No run logs yet for this job.")

@@ -137,6 +137,77 @@ class TestAnimationAndScraper(unittest.TestCase):
         self.assertIn("lottie_files", data)
         self.assertIn("css_keyframes", data)
 
+    def test_scheduler_crud_and_execution(self):
+        import scheduler
+        # Create
+        job_id = scheduler.create_job(
+            name="Unit Test Job",
+            url="https://quotes.toscrape.com",
+            mode="fast",
+            interval_minutes=30
+        )
+        self.assertIsInstance(job_id, int)
+
+        # Get
+        job = scheduler.get_job(job_id)
+        self.assertIsNotNone(job)
+        self.assertEqual(job["name"], "Unit Test Job")
+
+        # Run Now
+        run_res = scheduler.trigger_job_now(job_id)
+        self.assertEqual(run_res["status"], "success")
+
+        # Check logs
+        logs = scheduler.get_job_logs(job_id)
+        self.assertGreaterEqual(len(logs), 1)
+
+        # Toggle
+        toggled = scheduler.toggle_job(job_id)
+        self.assertTrue(toggled)
+        updated_job = scheduler.get_job(job_id)
+        self.assertEqual(updated_job["is_active"], 0)
+
+        # Delete
+        deleted = scheduler.delete_job(job_id)
+        self.assertTrue(deleted)
+        self.assertIsNone(scheduler.get_job(job_id))
+
+    def test_scheduler_tools_registered(self):
+        tools = get_all_tools()
+        self.assertIn("schedule_scrape_job", tools)
+        self.assertIn("list_scrape_jobs", tools)
+        self.assertIn("trigger_scrape_job", tools)
+
+    def test_api_jobs_endpoints(self):
+        client = TestClient(app)
+        # 1. Create job via API
+        create_resp = client.post("/api/jobs", json={
+            "name": "API Test Job",
+            "url": "https://quotes.toscrape.com",
+            "mode": "fast",
+            "scrape_type": "text",
+            "interval_minutes": 45
+        })
+        self.assertEqual(create_resp.status_code, 200)
+        create_data = create_resp.json()
+        self.assertTrue(create_data["success"])
+        job_id = create_data["job"]["id"]
+
+        # 2. List jobs via API
+        list_resp = client.get("/api/jobs")
+        self.assertEqual(list_resp.status_code, 200)
+        jobs = list_resp.json()["jobs"]
+        self.assertTrue(any(j["id"] == job_id for j in jobs))
+
+        # 3. Toggle job
+        patch_resp = client.patch(f"/api/jobs/{job_id}/toggle")
+        self.assertEqual(patch_resp.status_code, 200)
+
+        # 4. Delete job
+        del_resp = client.delete(f"/api/jobs/{job_id}")
+        self.assertEqual(del_resp.status_code, 200)
+
 
 if __name__ == "__main__":
     unittest.main()
+

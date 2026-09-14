@@ -10,6 +10,8 @@ from tools import (
     tool_query_history,
     tool_send_webhook,
     tool_extract_web_animations,
+    tool_schedule_scrape_job,
+    tool_list_scrape_jobs,
     load_plugins
 )
 
@@ -126,6 +128,58 @@ def extract_web_animations(url: str, mode: str = "fast") -> str:
         return json.dumps(result, indent=2, ensure_ascii=False)
     except Exception as e:
         return json.dumps({"error": str(e), "url": url})
+
+
+@server.tool()
+def schedule_scrape_job(
+    name: str,
+    url: str,
+    interval_minutes: int = 60,
+    scrape_type: str = "text",
+    template: Optional[str] = None,
+    prompt: Optional[str] = None,
+    webhook_url: Optional[str] = None,
+    alert_on_change_only: bool = True
+) -> str:
+    """
+    Schedule an automated recurring background scrape job that monitors a website and sends alerts on changes.
+
+    Parameters:
+        name: Descriptive job name (e.g. 'Daily GPU Price Watcher').
+        url: Webpage URL to monitor.
+        interval_minutes: Execution frequency in minutes (e.g. 15, 60, 360, 1440).
+        scrape_type: 'text' (default) or 'animations'.
+        template: Optional schema template ('ecommerce', 'jobs', 'realestate', 'articles', 'quotes').
+        prompt: Optional extraction prompt.
+        webhook_url: Optional Discord or Slack webhook URL for alerts.
+        alert_on_change_only: Only send notifications when diffs or price shifts are detected.
+    """
+    try:
+        result = tool_schedule_scrape_job(
+            name=name,
+            url=url,
+            interval_minutes=interval_minutes,
+            scrape_type=scrape_type,
+            template=template,
+            prompt=prompt,
+            webhook_url=webhook_url,
+            alert_on_change_only=alert_on_change_only
+        )
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        return json.dumps({"error": str(e)})
+
+
+@server.tool()
+def list_scrape_jobs() -> str:
+    """
+    List all active and paused recurring scrape jobs with their status and next run times.
+    """
+    try:
+        result = tool_list_scrape_jobs()
+        return json.dumps(result, indent=2, default=str)
+    except Exception as e:
+        return json.dumps({"error": str(e)})
 
 
 if __name__ == "__main__":
