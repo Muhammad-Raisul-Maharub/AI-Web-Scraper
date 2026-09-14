@@ -13,7 +13,9 @@ from scrape import (
     keyword_based_extraction,
     capture_page_screenshot,
     scrape_with_infinite_scroll,
-    scrape_with_pagination
+    scrape_with_pagination,
+    extract_animation_assets,
+    bundle_animations_zip
 )
 from parse import extract_with_ai, extract_with_vision
 from schemas import EXTRACTION_TEMPLATES, create_dynamic_model
@@ -92,6 +94,10 @@ if "current_screenshot" not in st.session_state:
     st.session_state.current_screenshot = None
 if "detected_price_changes" not in st.session_state:
     st.session_state.detected_price_changes = []
+if "scraped_animations" not in st.session_state:
+    st.session_state.scraped_animations = None
+if "animation_zip_bytes" not in st.session_state:
+    st.session_state.animation_zip_bytes = None
 if "copilot_messages" not in st.session_state:
     st.session_state.copilot_messages = [
         {
@@ -292,6 +298,15 @@ with tab_copilot:
 # TAB 1: Single Page Scrape & AI Extraction
 # ==========================================
 with tab1:
+    scrape_target_type = st.radio(
+        "🎯 Scraping Target Type",
+        options=[
+            "📄 Cleaned Text / DOM (AI Extraction)",
+            "🎬 Animations & Motion Assets (Lottie, Rive, SVGs, Media, JS Libs)"
+        ],
+        horizontal=True
+    )
+
     col_url, col_btn, col_shot = st.columns([3, 1, 1])
     with col_url:
         target_url = st.text_input("Target Website URL", placeholder="https://quotes.toscrape.com", label_visibility="collapsed")
@@ -326,22 +341,136 @@ with tab1:
                 try:
                     st.write(f"Connecting using **{scraper_mode}** engine...")
                     raw_html = scrape_website(target_url, mode=scraper_mode, timeout=timeout)
-                    st.write("Extracting and cleaning DOM...")
-                    body = extract_body_content(raw_html)
-                    cleaned = clean_body_content(body)
 
-                    # Save to SQLite database
-                    scrape_id = save_scrape(target_url, scraper_mode, raw_html, cleaned)
+                    if "Animations" in scrape_target_type:
+                        st.write("Inspecting and extracting animation & motion assets...")
+                        anim_assets = extract_animation_assets(raw_html, base_url=target_url)
+                        st.write("Packaging discovered assets into ZIP archive...")
+                        zip_bytes = bundle_animations_zip(anim_assets, base_url=target_url)
 
-                    st.session_state.scraped_dom = cleaned
-                    st.session_state.scraped_raw_html = raw_html
-                    st.session_state.scraped_url = target_url
-                    st.session_state.extracted_data = None
-                    st.session_state.detected_price_changes = []
-                    status.update(label=f"Scraping completed & saved (ID: #{scrape_id})!", state="complete")
+                        st.session_state.scraped_animations = anim_assets
+                        st.session_state.animation_zip_bytes = zip_bytes
+                        st.session_state.scraped_dom = None
+                        st.session_state.scraped_url = target_url
+                        status.update(label=f"Extracted {anim_assets['total_assets_count']} animation assets!", state="complete")
+                    else:
+                        st.write("Extracting and cleaning DOM...")
+                        body = extract_body_content(raw_html)
+                        cleaned = clean_body_content(body)
+
+                        # Save to SQLite database
+                        scrape_id = save_scrape(target_url, scraper_mode, raw_html, cleaned)
+
+                        st.session_state.scraped_dom = cleaned
+                        st.session_state.scraped_raw_html = raw_html
+                        st.session_state.scraped_url = target_url
+                        st.session_state.scraped_animations = None
+                        st.session_state.animation_zip_bytes = None
+                        st.session_state.extracted_data = None
+                        st.session_state.detected_price_changes = []
+                        status.update(label=f"Scraping completed & saved (ID: #{scrape_id})!", state="complete")
                 except Exception as e:
                     status.update(label=f"Failed to scrape: {e}", state="error")
                     st.error(f"Error scraping website: {e}")
+
+    # Display Scraped Animation Assets if available
+    if st.session_state.scraped_animations:
+        anim = st.session_state.scraped_animations
+        st.markdown("---")
+
+        col_hdr, col_dl = st.columns([3, 1])
+        with col_hdr:
+            st.markdown(f"### 🎬 Discovered Animation Assets ({anim['total_assets_count']})")
+            st.caption(f"Target: `{st.session_state.scraped_url}`")
+        with col_dl:
+            if st.session_state.animation_zip_bytes:
+                st.download_button(
+                    "📥 Download All (.ZIP)",
+                    data=st.session_state.animation_zip_bytes,
+                    file_name="animation_assets.zip",
+                    mime="application/zip",
+                    use_container_width=True,
+                    type="primary"
+                )
+
+        col_a1, col_a2, col_a3, col_a4, col_a5 = st.columns(5)
+        col_a1.metric("Lottie & Rive", f"{len(anim['lottie_files']) + len(anim['rive_files'])}")
+        col_a2.metric("Animated SVGs", f"{len(anim['svg_animations'])}")
+        col_a3.metric("Motion Media", f"{len(anim['motion_media'])}")
+        col_a4.metric("JS Libs", f"{len(anim['animation_libraries'])}")
+        col_a5.metric("Keyframes", f"{len(anim['css_keyframes'])}")
+
+        anim_tab1, anim_tab2, anim_tab3, anim_tab4, anim_tab5, anim_tab6 = st.tabs([
+            f"🎭 Lottie & Rive ({len(anim['lottie_files']) + len(anim['rive_files'])})",
+            f"🌀 SVGs ({len(anim['svg_animations'])})",
+            f"🎞️ Media ({len(anim['motion_media'])})",
+            f"⚡ JS Libraries ({len(anim['animation_libraries'])})",
+            f"🎨 Keyframes ({len(anim['css_keyframes'])})",
+            "📋 Manifest JSON"
+        ])
+
+        with anim_tab1:
+            if not anim['lottie_files'] and not anim['rive_files']:
+                st.info("No Lottie or Rive files detected on this page.")
+            else:
+                for idx, lf in enumerate(anim['lottie_files']):
+                    with st.expander(f"Lottie #{idx + 1}: [{lf['type']}] {lf.get('url', 'inline')[:60]}", expanded=True):
+                        st.write(f"**Type:** `{lf['type']}`")
+                        if lf.get('url') and lf['url'].startswith('http'):
+                            st.markdown(f"🔗 [Direct URL]({lf['url']})")
+                        if "preview" in lf:
+                            st.caption("Inline Data Preview:")
+                            st.code(lf['preview'], language="json")
+                for idx, rf in enumerate(anim['rive_files']):
+                    with st.expander(f"Rive #{idx + 1}: {rf['url']}", expanded=True):
+                        st.write(f"**Type:** `{rf['type']}`")
+                        st.markdown(f"🔗 [Direct Rive Asset]({rf['url']})")
+
+        with anim_tab2:
+            if not anim['svg_animations']:
+                st.info("No animated SVG elements or standalone SVGs detected.")
+            else:
+                for idx, svg in enumerate(anim['svg_animations']):
+                    if svg.get("type") == "inline-animated-svg":
+                        with st.expander(f"Inline SVG #{idx + 1} (SMIL/CSS animated)", expanded=True):
+                            st.caption("Live Render:")
+                            st.markdown(f"<div style='background:#181824;padding:15px;border-radius:8px;text-align:center;'>{svg['html']}</div>", unsafe_allow_html=True)
+                            st.code(svg['html'][:500] + ("..." if len(svg['html']) > 500 else ""), language="xml")
+                    else:
+                        st.markdown(f"- 📄 **SVG File:** [{svg['url']}]({svg['url']})")
+
+        with anim_tab3:
+            if not anim['motion_media']:
+                st.info("No GIF or video loops detected.")
+            else:
+                cols = st.columns(min(3, len(anim['motion_media'])) or 1)
+                for idx, m in enumerate(anim['motion_media']):
+                    with cols[idx % len(cols)]:
+                        st.caption(f"{m['type'].upper()} #{idx + 1}")
+                        if m['type'] == 'gif':
+                            st.image(m['url'], use_container_width=True)
+                        elif m['type'] == 'video-loop':
+                            st.video(m['url'])
+                        st.caption(m['url'])
+
+        with anim_tab4:
+            if not anim['animation_libraries']:
+                st.info("No common animation JavaScript libraries detected.")
+            else:
+                st.write("Identified Animation Scripts & Engines:")
+                for lib in anim['animation_libraries']:
+                    st.markdown(f"- ⚡ **{lib['library'].upper()}**: `{lib['url']}`")
+
+        with anim_tab5:
+            if not anim['css_keyframes']:
+                st.info("No CSS @keyframes rules discovered.")
+            else:
+                for idx, kf in enumerate(anim['css_keyframes']):
+                    with st.expander(f"@keyframes {kf['name']}", expanded=False):
+                        st.code(kf['css'], language="css")
+
+        with anim_tab6:
+            st.json(anim)
 
     # Display Scraped Content Details if available
     if st.session_state.scraped_dom:

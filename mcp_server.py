@@ -9,6 +9,7 @@ from tools import (
     tool_take_screenshot,
     tool_query_history,
     tool_send_webhook,
+    tool_extract_web_animations,
     load_plugins
 )
 
@@ -109,6 +110,22 @@ def send_webhook_alert(webhook_url: str, title: str, content: str) -> str:
         return json.dumps(result, indent=2)
     except Exception as e:
         return json.dumps({"error": str(e)})
+
+
+@server.tool()
+def extract_web_animations(url: str, mode: str = "fast") -> str:
+    """
+    Extract animation and motion assets (Lottie JSON, Rive .riv, animated SVGs, GIF/WebM loops, GSAP/Three.js libraries, and CSS @keyframes) from a webpage.
+
+    Parameters:
+        url: Target webpage URL to inspect.
+        mode: Scraping engine: 'fast', 'local', or 'bright_data' (default: 'fast').
+    """
+    try:
+        result = tool_extract_web_animations(url=url, mode=mode)
+        return json.dumps(result, indent=2, ensure_ascii=False)
+    except Exception as e:
+        return json.dumps({"error": str(e), "url": url})
 
 
 if __name__ == "__main__":

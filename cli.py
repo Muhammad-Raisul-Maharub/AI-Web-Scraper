@@ -6,7 +6,21 @@ import os
 import pandas as pd
 from dotenv import load_dotenv
 
-from scrape import scrape_website, extract_body_content, clean_body_content, capture_page_screenshot
+if sys.stdout.encoding != "utf-8":
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
+from scrape import (
+    scrape_website,
+    extract_body_content,
+    clean_body_content,
+    capture_page_screenshot,
+    extract_animation_assets,
+    bundle_animations_zip
+)
 from parse import extract_with_ai
 from schemas import EXTRACTION_TEMPLATES, create_dynamic_model
 from db import save_scrape, save_extraction, detect_price_changes
@@ -44,6 +58,8 @@ def main():
     parser.add_argument("--output", "-o", help="Path to save output file (.json, .csv, or .md)")
     parser.add_argument("--screenshot", help="Capture and save screenshot to specified PNG file path")
     parser.add_argument("--webhook", help="Webhook URL to POST extraction results to")
+    parser.add_argument("--animations", action="store_true", help="Extract animation/motion assets (Lottie, Rive, SVGs, GIFs, CSS Keyframes)")
+    parser.add_argument("--download-zip", help="Path to download and bundle discovered animation assets as a .ZIP archive")
 
     args = parser.parse_args()
 
@@ -67,6 +83,45 @@ def main():
     except Exception as e:
         print(f"❌ Scraping error: {e}", file=sys.stderr)
         sys.exit(1)
+
+    # Animation extraction mode
+    if args.animations:
+        print(f"\n🎬 Extracting animation & motion assets from {args.url}...")
+        assets = extract_animation_assets(raw_html, base_url=args.url)
+        print(f"✨ Found {assets['total_assets_count']} total animation assets:")
+        print(f"  • Lottie Files: {len(assets['lottie_files'])}")
+        for lf in assets['lottie_files']:
+            print(f"    - [{lf['type']}] {lf.get('url', 'inline')}")
+        print(f"  • Rive Files: {len(assets['rive_files'])}")
+        for rf in assets['rive_files']:
+            print(f"    - {rf['url']}")
+        print(f"  • SVG Animations: {len(assets['svg_animations'])}")
+        print(f"  • Motion Media (GIF/Video): {len(assets['motion_media'])}")
+        for mm in assets['motion_media']:
+            print(f"    - [{mm['type']}] {mm['url']}")
+        print(f"  • Animation JS Libraries: {len(assets['animation_libraries'])}")
+        for lib in assets['animation_libraries']:
+            print(f"    - {lib['library'].upper()}: {lib['url']}")
+        print(f"  • CSS Keyframe Animations: {len(assets['css_keyframes'])}")
+        for kf in assets['css_keyframes']:
+            print(f"    - @keyframes {kf['name']}")
+
+        # Save output if requested
+        zip_target = args.download_zip or (args.output if args.output and args.output.endswith(".zip") else None)
+        if zip_target:
+            print(f"\n📦 Packaging animations into {zip_target}...")
+            zip_data = bundle_animations_zip(assets, base_url=args.url)
+            os.makedirs(os.path.dirname(os.path.abspath(zip_target)), exist_ok=True)
+            with open(zip_target, "wb") as f:
+                f.write(zip_data)
+            print(f"✅ Saved animation ZIP archive ({len(zip_data):,} bytes) to {zip_target}")
+
+        if args.output and args.output.endswith(".json"):
+            with open(args.output, "w", encoding="utf-8") as f:
+                json.dump(assets, f, indent=2)
+            print(f"✅ Saved animation manifest JSON to {args.output}")
+
+        sys.exit(0)
 
     # If no prompt or template is provided, print preview and exit
     if not args.prompt and not args.template and not args.fields:

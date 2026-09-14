@@ -2,6 +2,7 @@
 import os
 import re
 import time
+import json
 import logging
 from urllib.parse import urlparse, urljoin
 import requests
@@ -438,3 +439,184 @@ def scrape_with_pagination(
         return pages
     finally:
         driver.quit()
+
+
+def extract_animation_assets(html_content: str, base_url: str) -> dict:
+    """
+    Extract animation and motion assets from webpage HTML.
+    Detects Lottie JSON, Rive (.riv), animated SVGs, GIFs/WebM, animation JS libraries, and CSS keyframes.
+    """
+    soup = BeautifulSoup(html_content, "html.parser")
+    base_url = base_url.rstrip("/")
+
+    results = {
+        "url": base_url,
+        "lottie_files": [],
+        "rive_files": [],
+        "svg_animations": [],
+        "motion_media": [],
+        "animation_libraries": [],
+        "css_keyframes": [],
+        "total_assets_count": 0
+    }
+
+    # 1. Lottie Animations
+    for tag in soup.find_all(["lottie-player", "dotlottie-player"]):
+        src = tag.get("src") or tag.get("data-src")
+        if src:
+            abs_src = urljoin(base_url, src)
+            results["lottie_files"].append({
+                "type": "lottie-player",
+                "url": abs_src,
+                "loop": tag.get("loop", "false"),
+                "autoplay": tag.get("autoplay", "false")
+            })
+
+    # Search script tags and attributes for .json lottie or bodymovin links
+    for script in soup.find_all("script"):
+        src = script.get("src", "")
+        if src and (".json" in src.lower() or "lottie" in src.lower()):
+            abs_src = urljoin(base_url, src)
+            if abs_src not in [item["url"] for item in results["lottie_files"]]:
+                results["lottie_files"].append({"type": "script-lottie", "url": abs_src})
+
+        # Inline JSON Lottie detection
+        script_text = script.string or ""
+        if '"v":' in script_text and '"fr":' in script_text and '"ip":' in script_text and '"op":' in script_text:
+            match = re.search(r"(\{[^{}]*\"v\"\s*:\s*\"[^\"]+\"[^{}]*\"layers\"\s*:\s*\[.*?\]\s*\})", script_text, re.DOTALL)
+            if match:
+                results["lottie_files"].append({
+                    "type": "inline-lottie-json",
+                    "url": "inline_data",
+                    "preview": match.group(1)[:300] + "..."
+                })
+
+    # 2. Rive Animations (.riv)
+    for canvas in soup.find_all(["canvas", "div"]):
+        rive_src = canvas.get("data-rive-src") or canvas.get("data-src") or canvas.get("src")
+        if rive_src and rive_src.endswith(".riv"):
+            results["rive_files"].append({"url": urljoin(base_url, rive_src), "type": "rive-canvas"})
+
+    for a_tag in soup.find_all("a", href=True):
+        if a_tag["href"].endswith(".riv"):
+            results["rive_files"].append({"url": urljoin(base_url, a_tag["href"]), "type": "rive-link"})
+
+    # 3. Animated SVGs & Vector Motion
+    for svg in soup.find_all("svg"):
+        has_animate = bool(svg.find_all(["animate", "animateTransform", "animateMotion", "set"]))
+        svg_str = str(svg)
+        if has_animate or "keyframes" in svg_str or "animation" in svg_str:
+            results["svg_animations"].append({
+                "type": "inline-animated-svg",
+                "html": svg_str[:1500],
+                "has_smil_tags": has_animate
+            })
+
+    for img in soup.find_all(["img", "object", "embed"]):
+        src = img.get("src") or img.get("data") or ""
+        if src.lower().endswith(".svg"):
+            abs_src = urljoin(base_url, src)
+            results["svg_animations"].append({"type": "svg-file", "url": abs_src})
+
+    # 4. Animated Media (GIF, WebP animations, MP4, WebM clips)
+    for img in soup.find_all("img"):
+        src = img.get("src") or img.get("data-src") or ""
+        if src.lower().endswith((".gif", ".apng")):
+            results["motion_media"].append({"type": "gif", "url": urljoin(base_url, src)})
+
+    for video in soup.find_all(["video", "source"]):
+        src = video.get("src") or ""
+        if src.lower().endswith((".mp4", ".webm", ".ogg")):
+            abs_src = urljoin(base_url, src)
+            if abs_src not in [m["url"] for m in results["motion_media"]]:
+                results["motion_media"].append({"type": "video-loop", "url": abs_src})
+
+    # 5. Animation Libraries & Scripts
+    known_anim_libs = [
+        "gsap", "three", "anime", "lottie", "framer-motion",
+        "scrollmagic", "pixi", "locomotive-scroll", "barba", "typed", "particles"
+    ]
+    for script in soup.find_all("script", src=True):
+        src = script["src"]
+        src_lower = src.lower()
+        for lib in known_anim_libs:
+            if lib in src_lower:
+                results["animation_libraries"].append({
+                    "library": lib,
+                    "url": urljoin(base_url, src)
+                })
+                break
+
+    # 6. CSS Keyframe Animations
+    for style in soup.find_all("style"):
+        css_text = style.string or ""
+        keyframes = re.findall(r"@keyframes\s+([a-zA-Z0-9_-]+)\s*\{([^}]+(?:\{[^}]*\}[^}]*)*)\}", css_text)
+        for name, rules in keyframes:
+            results["css_keyframes"].append({
+                "name": name,
+                "css": f"@keyframes {name} {{{rules[:400]}}}"
+            })
+
+    # Calculate total count
+    results["total_assets_count"] = (
+        len(results["lottie_files"]) +
+        len(results["rive_files"]) +
+        len(results["svg_animations"]) +
+        len(results["motion_media"]) +
+        len(results["animation_libraries"]) +
+        len(results["css_keyframes"])
+    )
+
+    return results
+
+
+def bundle_animations_zip(assets_dict: dict, base_url: str = None) -> bytes:
+    """
+    Download discovered animation assets and package them into an in-memory ZIP archive.
+    """
+    import zipfile
+    import io
+
+    zip_buffer = io.BytesIO()
+
+    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
+        # Write Manifest JSON
+        manifest_data = json.dumps(assets_dict, indent=2, ensure_ascii=False)
+        zip_file.writestr("manifest.json", manifest_data)
+
+        # Download Lottie and Media files
+        url_items = []
+        for lottie in assets_dict.get("lottie_files", []):
+            if lottie.get("url") and lottie["url"].startswith("http"):
+                url_items.append(("lottie", lottie["url"]))
+
+        for rive in assets_dict.get("rive_files", []):
+            if rive.get("url") and rive["url"].startswith("http"):
+                url_items.append(("rive", rive["url"]))
+
+        for media in assets_dict.get("motion_media", []):
+            if media.get("url") and media["url"].startswith("http"):
+                url_items.append(("media", media["url"]))
+
+        for svg in assets_dict.get("svg_animations", []):
+            if svg.get("url") and svg["url"].startswith("http"):
+                url_items.append(("svgs", svg["url"]))
+
+        # Download remote assets with timeout
+        for folder, url in url_items:
+            try:
+                fname = os.path.basename(urlparse(url).path) or f"asset_{hash(url)}.bin"
+                resp = requests.get(url, headers=DEFAULT_HEADERS, timeout=10)
+                if resp.status_code == 200:
+                    zip_file.writestr(f"{folder}/{fname}", resp.content)
+            except Exception as e:
+                logging.warning(f"Could not bundle asset {url}: {e}")
+
+        # Save CSS Keyframes to keyframes.css
+        keyframes_list = assets_dict.get("css_keyframes", [])
+        if keyframes_list:
+            css_content = "\n\n".join([kf["css"] for kf in keyframes_list])
+            zip_file.writestr("css/keyframes.css", css_content)
+
+    zip_buffer.seek(0)
+    return zip_buffer.getvalue()

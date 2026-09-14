@@ -7,7 +7,7 @@ import importlib.util
 from typing import Callable, Dict, Any, List, Optional
 from pydantic import BaseModel
 
-from scrape import scrape_website, extract_body_content, clean_body_content, capture_page_screenshot
+from scrape import scrape_website, extract_body_content, clean_body_content, capture_page_screenshot, extract_animation_assets
 from parse import extract_with_ai
 from schemas import EXTRACTION_TEMPLATES, create_dynamic_model
 from db import save_scrape, save_extraction, get_recent_scrapes, get_recent_extractions, detect_price_changes
@@ -194,6 +194,28 @@ def tool_query_history(limit: int = 5) -> Dict[str, Any]:
 )
 def tool_send_webhook(webhook_url: str, title: str, content: str) -> Dict[str, Any]:
     return send_webhook(webhook_url, title, content)
+
+
+@register_tool(
+    name="extract_web_animations",
+    description="Inspect any webpage HTML and extract all animation/motion assets including Lottie JSON files, Rive (.riv) assets, animated SVG graphics, GIF/WebM loops, animation JS libraries (GSAP, Three.js), and CSS @keyframes.",
+    parameters={
+        "type": "object",
+        "properties": {
+            "url": {"type": "string", "description": "Webpage URL to inspect for animation and motion assets."},
+            "mode": {
+                "type": "string",
+                "enum": ["fast", "local", "bright_data"],
+                "description": "Scraping engine: 'fast', 'local', or 'bright_data' (default: 'fast')."
+            }
+        },
+        "required": ["url"]
+    }
+)
+def tool_extract_web_animations(url: str, mode: str = "fast") -> Dict[str, Any]:
+    raw_html = scrape_website(url, mode=mode)
+    assets = extract_animation_assets(raw_html, base_url=url)
+    return assets
 
 
 # ==============================================================================

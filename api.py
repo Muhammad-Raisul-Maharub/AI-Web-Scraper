@@ -3,7 +3,7 @@ from typing import Optional, List, Dict, Any
 from fastapi import FastAPI, HTTPException, Query, BackgroundTasks
 from pydantic import BaseModel, Field
 
-from scrape import scrape_website, extract_body_content, clean_body_content
+from scrape import scrape_website, extract_body_content, clean_body_content, extract_animation_assets
 from parse import extract_with_ai
 from schemas import EXTRACTION_TEMPLATES, create_dynamic_model
 from db import save_scrape, save_extraction, get_recent_scrapes, get_recent_extractions, detect_price_changes
@@ -44,6 +44,7 @@ def root():
         "endpoints": {
             "templates": "/api/templates",
             "scrape": "/api/scrape",
+            "scrape_animations": "/api/scrape/animations",
             "extract": "/api/extract",
             "history": "/api/history"
         }
@@ -79,6 +80,20 @@ def scrape_endpoint(req: ScrapeRequest):
             "cleaned_characters": len(cleaned),
             "cleaned_preview": cleaned[:500] + ("..." if len(cleaned) > 500 else "")
         }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/scrape/animations")
+def scrape_animations_endpoint(req: ScrapeRequest):
+    """
+    Inspect webpage HTML and extract all animation/motion assets:
+    Lottie JSON, Rive .riv, animated SVGs, GIFs/videos, animation JS libraries, and CSS keyframes.
+    """
+    try:
+        raw_html = scrape_website(req.url, mode=req.mode, timeout=req.timeout)
+        assets = extract_animation_assets(raw_html, base_url=req.url)
+        return assets
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

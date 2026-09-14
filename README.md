@@ -8,6 +8,8 @@ An intelligent, multi-provider web scraping and structured data extraction platf
 
 | Feature | Description |
 | :--- | :--- |
+| **🎬 Animation & Motion Asset Extraction** | Detects, extracts, and bundles Lottie JSON, Rive (`.riv`), animated SVGs, GIF/WebM loops, animation JS libraries (GSAP, Three.js), and CSS `@keyframes` with one-click ZIP download. |
+| **🎯 Scraping Target Type Selector** | Switch between Cleaned Text / DOM (for AI analysis) and Animation Assets in the UI or programmatically. |
 | **💬 Autonomous AI Copilot** | Interactive conversational agent in Streamlit with multi-turn memory and autonomous tool calling across Gemini, OpenAI, and Ollama. |
 | **🔌 Model Context Protocol (MCP) Server** | Run `mcp_server.py` to expose all scraping tools over stdio to Claude Desktop, Cursor, Antigravity, and other MCP clients. |
 | **🧩 Extensible Tool & Plugin System** | Drop any Python file with `@register_tool` into `plugins/` for instant auto-discovery, plus `mcp_config.json` for external MCP servers. |
@@ -19,6 +21,7 @@ An intelligent, multi-provider web scraping and structured data extraction platf
 | **💻 CLI Automation Tool** | Command-line interface (`cli.py`) for terminal workflows and batch scripts. |
 | **📈 Price Tracking & Change Detection** | Persistent SQLite database (`db.py`) that logs scrape history and flags price drops or increases. |
 | **🔔 Webhook Dispatcher** | Automatically dispatches structured results to Discord, Slack, Zapier, or custom webhook URLs. |
+| **🧪 Automated Unit & Integration Tests** | Test suite in `tests/test_scraper.py` testing DOM cleaners, animation extraction, ZIP bundlers, and API endpoints. |
 | **📓 Interactive Jupyter Lab** | `demo_and_evaluation.ipynb` laboratory for benchmarking DOM compression and testing prompts. |
 
 ---
@@ -121,6 +124,7 @@ python mcp_server.py
 **Exposed MCP Tools:**
 - `scrape_page`: Fetches and cleans any URL.
 - `extract_structured_data`: Extracts Pydantic records into JSON.
+- `extract_web_animations`: Extracts Lottie, Rive, SVGs, GIFs, JS libs, and CSS keyframes.
 - `take_screenshot`: Captures high-res full-page screenshots.
 - `query_scrape_history`: Retrieves previous scrape logs.
 - `send_webhook_alert`: Dispatches alerts to Discord or Slack.
@@ -165,6 +169,9 @@ Interactive API Docs: [http://localhost:8000/docs](http://localhost:8000/docs)
 ```powershell
 # Extract e-commerce products into JSON
 python cli.py --url "https://books.toscrape.com" --template ecommerce --output books.json
+
+# Extract animation assets and bundle into a ZIP archive
+python cli.py --url "https://example.com" --animations --download-zip animations.zip
 
 # Capture screenshot and extract with custom prompt
 python cli.py --url "https://quotes.toscrape.com" --screenshot quote.png --prompt "Extract all quotes and authors" --format json
