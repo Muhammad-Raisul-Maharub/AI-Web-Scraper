@@ -8,7 +8,9 @@ from fastapi.testclient import TestClient
 from scrape import (
     extract_body_content,
     clean_body_content,
+    split_dom_content,
     extract_animation_assets,
+    scrape_animations,
     bundle_animations_zip
 )
 from tools import get_all_tools, execute_tool
@@ -69,6 +71,23 @@ class TestAnimationAndScraper(unittest.TestCase):
         self.assertIn("Interactive motion testing page", cleaned)
         self.assertNotIn("script", cleaned.lower())
         self.assertNotIn("style", cleaned.lower())
+
+    def test_split_dom_content(self):
+        # Test normal chunking
+        short_text = "Paragraph 1\nParagraph 2\nParagraph 3"
+        chunks = split_dom_content(short_text, max_length=100)
+        self.assertEqual(len(chunks), 1)
+
+        # Test chunking with long content
+        long_para = "Word " * 1500  # ~7500 chars, exceeds 2000
+        chunks = split_dom_content(long_para, max_length=2000, overlap=100)
+        self.assertGreater(len(chunks), 1)
+        for c in chunks:
+            self.assertLessEqual(len(c), 2000)
+
+    def test_scrape_animations_alias(self):
+        assets = scrape_animations(SAMPLE_ANIMATION_HTML, base_url="https://example.com")
+        self.assertGreaterEqual(assets["total_assets_count"], 7)
 
     def test_extract_animation_assets(self):
         base_url = "https://example.com"

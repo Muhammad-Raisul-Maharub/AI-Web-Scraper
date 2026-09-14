@@ -182,12 +182,22 @@ def split_dom_content(dom_content: str, max_length: int = 5000, overlap: int = 2
     current_length = 0
 
     for para in paragraphs:
+        # If an individual paragraph exceeds max_length, split it into smaller segments
+        if len(para) > max_length:
+            if current_chunk:
+                chunks.append("\n".join(current_chunk))
+                current_chunk = []
+                current_length = 0
+            for i in range(0, len(para), max_length - overlap):
+                chunks.append(para[i:i + max_length])
+            continue
+
         para_len = len(para) + 1
         if current_length + para_len > max_length:
             if current_chunk:
                 chunk_text = "\n".join(current_chunk)
                 chunks.append(chunk_text)
-                # Keep last few lines as overlap
+                # Keep last line as overlap
                 current_chunk = [current_chunk[-1]] if len(current_chunk) > 1 else []
                 current_length = len(current_chunk[0]) if current_chunk else 0
 
@@ -570,6 +580,10 @@ def extract_animation_assets(html_content: str, base_url: str) -> dict:
     return results
 
 
+# Backward-compatible alias
+scrape_animations = extract_animation_assets
+
+
 def scrape_animations_from_driver(driver, base_url: str = "") -> dict:
     """
     Extract animations dynamically from an active Selenium WebDriver session.
@@ -588,7 +602,7 @@ def scrape_animations_from_driver(driver, base_url: str = "") -> dict:
     except Exception:
         html = ""
 
-    results = scrape_animations(html, base_url=base_url)
+    results = extract_animation_assets(html, base_url=base_url)
 
     # 2. Dynamic runtime CSSOM keyframe extraction
     cssom_script = """
