@@ -1,10 +1,13 @@
 {
-  "server_name": "ai-web-scraper",
-  "version": "2.0.0",
-  "description": "Model Context Protocol server for AI Web Scraper providing live web scraping, Pydantic structured data extraction, screenshot capture, and price tracking.",
+  "server_name": "omniscrape-ai",
+  "version": "2.1.0",
+  "description": "OmniScrape AI Model Context Protocol server providing live web scraping, Pydantic structured data extraction, animation inspection, and background price monitoring.",
   "enabled_tools": [
     "scrape_page",
     "extract_structured_data",
+    "extract_web_animations",
+    "schedule_scrape_job",
+    "list_scrape_jobs",
     "take_screenshot",
     "query_scrape_history",
     "send_webhook_alert"

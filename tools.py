@@ -1,4 +1,4 @@
-# tools.py - Extensible Tool Registry and Plugin System for AI Web Scraper
+# tools.py - Extensible Tool Registry and Plugin System for OmniScrape AI
 import os
 import sys
 import json

@@ -1,4 +1,4 @@
-# cli.py - Command Line Interface for AI Web Scraper
+# cli.py - Command Line Interface for OmniScrape AI
 import argparse
 import json
 import sys
@@ -31,7 +31,7 @@ load_dotenv()
 
 def main():
     parser = argparse.ArgumentParser(
-        description="AI Web Scraper CLI - Intelligent web scraping and AI-powered structured extraction."
+        description="OmniScrape AI CLI - Autonomous multi-modal web scraping, structured data extraction, and animation bundling."
     )
     parser.add_argument("--url", "-u", required=True, help="Target URL to scrape")
     parser.add_argument(

@@ -1,4 +1,4 @@
-# api.py - FastAPI Headless REST API for AI Web Scraper
+# api.py - FastAPI Headless REST API for OmniScrape AI
 from typing import Optional, List, Dict, Any
 from fastapi import FastAPI, HTTPException, Query, BackgroundTasks
 from pydantic import BaseModel, Field
@@ -10,9 +10,9 @@ from db import save_scrape, save_extraction, get_recent_scrapes, get_recent_extr
 from webhook import send_webhook
 
 app = FastAPI(
-    title="AI Web Scraper REST API",
-    description="Headless API for scraping websites and extracting structured data with AI models.",
-    version="2.0.0"
+    title="OmniScrape AI REST API",
+    description="Headless API for autonomous multi-modal web scraping, structured data extraction, animation inspection, and recurring background monitors.",
+    version="2.1.0"
 )
 
 
@@ -39,8 +39,8 @@ class ExtractRequest(BaseModel):
 def root():
     return {
         "status": "online",
-        "service": "AI Web Scraper REST API",
-        "version": "2.0.0",
+        "service": "OmniScrape AI REST API",
+        "version": "2.1.0",
         "endpoints": {
             "templates": "/api/templates",
             "scrape": "/api/scrape",

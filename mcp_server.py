@@ -1,4 +1,4 @@
-# mcp_server.py - Model Context Protocol (MCP) Server for AI Web Scraper
+# mcp_server.py - Model Context Protocol (MCP) Server for OmniScrape AI
 import json
 import logging
 from typing import Optional
@@ -19,9 +19,9 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(me
 
 # Initialize MCP Server
 server = MCPServer(
-    name="ai-web-scraper",
-    version="2.0.0",
-    description="Live web scraping, Pydantic structured data extraction, screenshot capture, and price tracking."
+    name="omniscrape-ai",
+    version="2.1.0",
+    description="OmniScrape AI: Autonomous multi-modal web scraping, Pydantic structured data extraction, animation inspection, and price tracking."
 )
 
 # Load optional plugins

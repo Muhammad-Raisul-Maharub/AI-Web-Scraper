@@ -1,6 +1,6 @@
-# 🕷️ AI Web Scraper Pro
+# 🌐 OmniScrape AI
 
-An intelligent, multi-provider web scraping and structured data extraction platform built with **Python**, **Streamlit**, **FastAPI**, **Selenium**, and **Generative AI** (Google Gemini, OpenAI, and local Ollama), featuring an **Autonomous AI Copilot** and an official **Model Context Protocol (MCP) Server**.
+An autonomous, multi-modal web scraping, animation asset extraction, and background monitoring platform built with **Python**, **Streamlit**, **FastAPI**, **Selenium**, and **Generative AI** (Google Gemini, OpenAI, and local Ollama), featuring an **Autonomous AI Copilot** and an official **Model Context Protocol (MCP) Server**.
 
 ---
 
@@ -104,7 +104,7 @@ streamlit run main.py
 
 ### 2. Model Context Protocol (MCP) Server
 
-Connect your external AI assistant (Claude Desktop, Cursor, Antigravity) to use AI-Web-Scraper tools natively:
+Connect your external AI assistant (Claude Desktop, Cursor, Antigravity) to use OmniScrape AI tools natively:
 
 ```powershell
 python mcp_server.py
@@ -114,10 +114,10 @@ python mcp_server.py
 ```json
 {
   "mcpServers": {
-    "ai-web-scraper": {
+    "omniscrape-ai": {
       "command": "python",
       "args": ["mcp_server.py"],
-      "cwd": "C:\\path\\to\\AI-Web-Scraper"
+      "cwd": "C:\\path\\to\\OmniScrape-AI"
     }
   }
 }

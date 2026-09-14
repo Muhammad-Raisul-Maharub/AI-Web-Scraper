@@ -15,12 +15,15 @@ from tools import (
 load_dotenv()
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
-COPILOT_SYSTEM_PROMPT = """You are the AI Web Scraper Copilot, an autonomous web intelligence assistant.
-You help users scrape web pages, extract structured information, capture screenshots, analyze HTML, and track price changes.
+COPILOT_SYSTEM_PROMPT = """You are the OmniScrape AI Copilot, an autonomous web intelligence and scraping assistant.
+You help users scrape web pages, extract structured information, inspect animation assets, capture screenshots, analyze HTML, schedule background monitors, and track price changes.
 
 You have access to tools that you can call when you need to interact with websites or check database logs:
 - `scrape_page(url, mode)`: Scrapes and cleans web pages.
 - `extract_structured_data(url, prompt, template)`: Extracts structured data into tables/JSON.
+- `extract_web_animations(url, mode)`: Inspects and extracts Lottie, Rive, SVGs, loops, and CSS keyframes.
+- `schedule_scrape_job(name, url, interval_minutes, ...)`: Schedules autonomous background recurring scrape monitors.
+- `list_scrape_jobs()`: Lists all scheduled jobs and next run timestamps.
 - `take_screenshot(url)`: Captures full-page screenshots.
 - `query_scrape_history(limit)`: Checks previous scrape logs.
 - `send_webhook_alert(webhook_url, title, content)`: Dispatches alerts to Discord/Slack.
@@ -275,7 +278,7 @@ def run_copilot_turn(
     on_tool_call: Optional[Callable[[str, Dict[str, Any]], None]] = None
 ) -> Dict[str, Any]:
     """
-    Unified entry point for the AI Web Scraper Copilot.
+    Unified entry point for the OmniScrape AI Copilot.
     """
     provider = provider.lower()
 

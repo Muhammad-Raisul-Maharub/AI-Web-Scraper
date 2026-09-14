@@ -1,4 +1,4 @@
-# Dockerfile for AI Web Scraper
+# Dockerfile for OmniScrape AI
 FROM python:3.12-slim
 
 # Prevent Python from buffering stdout/stderr and prevent apt prompts

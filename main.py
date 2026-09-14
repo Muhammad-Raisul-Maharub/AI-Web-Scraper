@@ -1,4 +1,4 @@
-# main.py - Comprehensive AI Web Scraper Dashboard (With AI Copilot & MCP Tools)
+# main.py - OmniScrape AI Dashboard (With AI Copilot, MCP Tools & Scheduler)
 import os
 import json
 import pandas as pd
@@ -38,8 +38,8 @@ scheduler_daemon = scheduler.get_scheduler()
 
 # Page Setup
 st.set_page_config(
-    page_title="AI Web Scraper Pro",
-    page_icon="🕷️",
+    page_title="OmniScrape AI",
+    page_icon="🌐",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -181,7 +181,7 @@ with st.sidebar:
     with st.expander("View MCP Connection Config"):
         st.code("""{
   "mcpServers": {
-    "ai-web-scraper": {
+    "omniscrape-ai": {
       "command": "python",
       "args": ["mcp_server.py"]
     }
@@ -189,9 +189,9 @@ with st.sidebar:
 }""", language="json")
 
 # Main App Header
-st.markdown('<div class="main-header">🕷️ AI Web Scraper Pro</div>', unsafe_allow_html=True)
+st.markdown('<div class="main-header">🌐 OmniScrape AI</div>', unsafe_allow_html=True)
 st.markdown(
-    '<div class="sub-header">Multi-provider web scraping, Pydantic schemas, MCP server tools, and an autonomous AI Copilot.</div>',
+    '<div class="sub-header">Autonomous multi-modal web scraping, animation extraction, Pydantic schemas, MCP tools & background monitoring.</div>',
     unsafe_allow_html=True
 )
 
