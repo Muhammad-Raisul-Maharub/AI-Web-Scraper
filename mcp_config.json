@@ -1,0 +1,27 @@
+{
+  "server_name": "ai-web-scraper",
+  "version": "2.0.0",
+  "description": "Model Context Protocol server for AI Web Scraper providing live web scraping, Pydantic structured data extraction, screenshot capture, and price tracking.",
+  "enabled_tools": [
+    "scrape_page",
+    "extract_structured_data",
+    "take_screenshot",
+    "query_scrape_history",
+    "send_webhook_alert"
+  ],
+  "external_mcp_servers": {
+    "brave_search": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-brave-search"],
+      "enabled": false,
+      "env": {
+        "BRAVE_API_KEY": ""
+      }
+    },
+    "filesystem": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "."],
+      "enabled": false
+    }
+  }
+}

@@ -1,53 +1,190 @@
-# AI-Web-Scraper
-# AI Web Scraper with Streamlit and Ollama Model Integration
+# 🕷️ AI Web Scraper Pro
 
-This project is a powerful web scraper that scrapes website content, cleans and parses the DOM, and extracts meaningful information using keyword-based extraction. The scraper uses **Selenium** for dynamic web content scraping, **BeautifulSoup** for DOM parsing, and is integrated with the **Ollama model** for AI-based content analysis. The project is built with **Streamlit** to provide an interactive UI for the web scraping process.
+An intelligent, multi-provider web scraping and structured data extraction platform built with **Python**, **Streamlit**, **FastAPI**, **Selenium**, and **Generative AI** (Google Gemini, OpenAI, and local Ollama), featuring an **Autonomous AI Copilot** and an official **Model Context Protocol (MCP) Server**.
 
-## Features
+---
 
-- **Website Scraping**: Scrapes websites and extracts DOM content.
-- **Deep Dive Scraping**: Recursively scrapes linked pages up to a configurable depth.
-- **Content Parsing**: Cleans and extracts meaningful content from the scraped DOM.
-- **Keyword-Based Extraction**: Extracts content relevant to specific keywords entered by the user.
-- **Background Image Slideshow**: Upload images for a background slideshow via the UI.
-- **Ollama Model Integration**: Parses scraped content using the Ollama language model.
+## 🌟 Complete Feature Matrix
 
-## Technology Stack
+| Feature | Description |
+| :--- | :--- |
+| **💬 Autonomous AI Copilot** | Interactive conversational agent in Streamlit with multi-turn memory and autonomous tool calling across Gemini, OpenAI, and Ollama. |
+| **🔌 Model Context Protocol (MCP) Server** | Run `mcp_server.py` to expose all scraping tools over stdio to Claude Desktop, Cursor, Antigravity, and other MCP clients. |
+| **🧩 Extensible Tool & Plugin System** | Drop any Python file with `@register_tool` into `plugins/` for instant auto-discovery, plus `mcp_config.json` for external MCP servers. |
+| **⚡ Hybrid Scraping Engine** | Fast HTTP (static sites), Headless Chrome (dynamic JavaScript), or Bright Data Proxy (anti-bot bypass). |
+| **📐 Pydantic Schema Templates** | Built-in templates for E-Commerce, Jobs, Real Estate, News, and Quotes, plus a Dynamic Schema Builder. |
+| **👁️ Multimodal Vision Extraction** | Captures full-page screenshots via Selenium and extracts data visually with Google Gemini Vision. |
+| **📜 Smart Pagination & Infinite Scroll** | Automatically scrolls dynamic feeds or clicks through pagination buttons (`Next >`). |
+| **🚀 Headless FastAPI REST API** | Full programmatic backend (`api.py`) for integration into external pipelines and services. |
+| **💻 CLI Automation Tool** | Command-line interface (`cli.py`) for terminal workflows and batch scripts. |
+| **📈 Price Tracking & Change Detection** | Persistent SQLite database (`db.py`) that logs scrape history and flags price drops or increases. |
+| **🔔 Webhook Dispatcher** | Automatically dispatches structured results to Discord, Slack, Zapier, or custom webhook URLs. |
+| **📓 Interactive Jupyter Lab** | `demo_and_evaluation.ipynb` laboratory for benchmarking DOM compression and testing prompts. |
 
-- **Streamlit**: Web app framework for creating the interactive user interface.
-- **Selenium**: Used to scrape dynamic web pages.
-- **BeautifulSoup**: For parsing and cleaning DOM content.
-- **Ollama Model**: AI-based content parsing (simulated integration in this project).
-- **JavaScript**: For background image upload and slideshow functionality.
+---
 
-## Prerequisites
+## 🛠️ Technology Stack
 
-- Python 3.7 or higher
-- WebDriver for Selenium (Chrome or Firefox)
-- Basic knowledge of using a proxy server (if required for scraping certain sites)
+- **Frontend**: Streamlit
+- **AI Agent & Copilot**: Google GenAI SDK (Function Calling), OpenAI Tool Calling, Ollama ReAct
+- **Protocol & Extensibility**: Model Context Protocol (MCP SDK 2.x), Custom Tool Registry
+- **Browser Automation**: Selenium, WebDriver Manager
+- **API Backend**: FastAPI, Uvicorn
+- **DOM Parsing & Cleaning**: BeautifulSoup4, lxml
+- **Data & Storage**: Pydantic v2, Pandas, SQLite3, Matplotlib, Pillow
 
-## Installation
+---
 
-1. **Clone the repository:**
+## 🚀 Quick Start Guide
 
-   ```bash
-   git clone https://github.com/Muhammad-Raisul-Maharub/ai-web-scraper.git
-   cd ai-web-scraper
+### 1. Clone & Setup Virtual Environment
+```bash
+git clone https://github.com/Muhammad-Raisul-Maharub/AI-Web-Scraper.git
+cd AI-Web-Scraper
 
-2. **Create a virtual environment (optional but recommended):**
-     ```python
+# Windows
 python -m venv venv
-source venv/bin/activate   # On Windows: venv\Scripts\activate
+venv\Scripts\activate
 
-3.**Install required dependencies:**
+# macOS / Linux
+python3 -m venv venv
+source venv/bin/activate
+```
+
+### 2. Install Dependencies
+```bash
 pip install -r requirements.txt
+```
 
-4.**Set up the WebDriver for Selenium:**
-Download the WebDriver for your preferred browser (e.g., Chrome or Firefox) and ensure it's in your PATH or specify its location in scrape.py.
+### 3. Environment Configuration (Optional)
+Copy `.env.example` to `.env`:
+```bash
+cp .env.example .env
+```
+| Variable | Description |
+| :--- | :--- |
+| `GEMINI_API_KEY` | Google Gemini API key (optional, can also be entered in the UI) |
+| `OPENAI_API_KEY` | OpenAI API key (optional, can also be entered in the UI) |
+| `OLLAMA_BASE_URL` | Local Ollama host (default: `http://localhost:11434`) |
+| `SBR_WEBDRIVER` | Optional Bright Data Scraping Browser remote proxy URL |
 
-5.**Run the Streamlit app:**
+---
+
+## 🖥️ Running the Application
+
+### 1. Interactive Streamlit Dashboard (With AI Copilot)
+```powershell
 streamlit run main.py
+```
+* **Tab 1 (💬 AI Assistant Copilot):** Converse naturally with the AI Copilot. It plans and executes scraping tools autonomously to answer questions, extract tables, or capture screenshots.
+* **Tab 2 (🔍 Scrape & Extract):** Single-page scraping, screenshot capture, Pydantic schema templates, Multimodal Vision mode, and CSV/JSON downloads.
+* **Tab 3 (🌐 Crawl & Pagination):** Domain-restricted crawling, infinite scroll feeding, and multi-page pagination.
+* **Tab 4 (⚡ Keyword Search):** Instant zero-LLM keyword filter.
+* **Tab 5 (📊 History & Price Tracker):** Database history and detected price change alerts.
 
-<h2>Author-Muhammad Raisul Maharub</h2>
+---
 
+### 2. Model Context Protocol (MCP) Server
 
+Connect your external AI assistant (Claude Desktop, Cursor, Antigravity) to use AI-Web-Scraper tools natively:
+
+```powershell
+python mcp_server.py
+```
+
+#### Claude Desktop Configuration (`claude_desktop_config.json`):
+```json
+{
+  "mcpServers": {
+    "ai-web-scraper": {
+      "command": "python",
+      "args": ["mcp_server.py"],
+      "cwd": "C:\\path\\to\\AI-Web-Scraper"
+    }
+  }
+}
+```
+
+**Exposed MCP Tools:**
+- `scrape_page`: Fetches and cleans any URL.
+- `extract_structured_data`: Extracts Pydantic records into JSON.
+- `take_screenshot`: Captures high-res full-page screenshots.
+- `query_scrape_history`: Retrieves previous scrape logs.
+- `send_webhook_alert`: Dispatches alerts to Discord or Slack.
+
+---
+
+### 3. Adding Custom Tools & Plugins
+
+Create any Python file in the `plugins/` directory and use the `@register_tool` decorator:
+
+```python
+# plugins/my_custom_tool.py
+from tools import register_tool
+
+@register_tool(
+    name="my_custom_tool",
+    description="Explain what this tool does.",
+    parameters={
+        "type": "object",
+        "properties": {
+            "query": {"type": "string", "description": "Search term."}
+        },
+        "required": ["query"]
+    }
+)
+def my_custom_tool(query: str) -> dict:
+    return {"result": f"Processed {query}"}
+```
+The AI Copilot and MCP Server will automatically discover and load it!
+
+---
+
+### 4. Headless FastAPI REST API
+```powershell
+uvicorn api:app --reload --port 8000
+```
+Interactive API Docs: [http://localhost:8000/docs](http://localhost:8000/docs)
+
+---
+
+### 5. CLI Automation Tool
+```powershell
+# Extract e-commerce products into JSON
+python cli.py --url "https://books.toscrape.com" --template ecommerce --output books.json
+
+# Capture screenshot and extract with custom prompt
+python cli.py --url "https://quotes.toscrape.com" --screenshot quote.png --prompt "Extract all quotes and authors" --format json
+```
+
+---
+
+## 📁 Repository Structure
+
+```
+├── .gitignore                   # Standard ignore rules (venv, secrets, caches)
+├── .env.example                 # Configuration template
+├── api.py                       # FastAPI REST API
+├── assistant.py                 # Autonomous AI Copilot engine with tool calling
+├── cli.py                       # Command-line interface automation tool
+├── db.py                        # SQLite storage, history & price change tracking
+├── demo_and_evaluation.ipynb    # Interactive evaluation & visualization notebook
+├── main.py                      # Modern Streamlit UI dashboard with Copilot tab
+├── mcp_config.json              # MCP server and external tool configurations
+├── mcp_server.py                # Official Model Context Protocol (MCP) Server
+├── parse.py                     # Multi-provider AI extraction engine (Gemini, Ollama, OpenAI, Vision)
+├── plugins/                     # Extensible custom tools directory
+│   └── social_extractor.py      # Example plugin: social media link extractor
+├── requirements.txt             # Pinned project dependencies
+├── schemas.py                   # Pydantic extraction models & dynamic schema generator
+├── scrape.py                    # Hybrid scraping engine, screenshot capture & pagination
+├── tools.py                     # Extensible Tool Registry & schema generators
+├── webhook.py                   # Discord, Slack & generic webhook dispatcher
+└── README.md                    # Project documentation
+```
+
+---
+
+## 👤 Author
+**Muhammad Raisul Maharub**
+- GitHub: [@Muhammad-Raisul-Maharub](https://github.com/Muhammad-Raisul-Maharub)
