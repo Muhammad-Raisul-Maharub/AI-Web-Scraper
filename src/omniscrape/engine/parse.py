@@ -3,7 +3,7 @@ import os
 import re
 import json
 import logging
-from typing import Type, List, Dict, Any
+from typing import Type, List, Dict, Any, Optional
 from pydantic import BaseModel
 from dotenv import load_dotenv
 
@@ -81,10 +81,10 @@ def _clean_json_response(raw_text: str) -> list | dict:
 def parse_with_gemini(
     dom_content: str,
     parse_description: str,
-    api_key: str = None,
+    api_key: Optional[str] = None,
     model_name: str = "gemini-2.5-flash",
     output_format: str = "markdown",
-    schema_class: Type[BaseModel] = None
+    schema_class: Optional[Type[BaseModel]] = None
 ) -> str | list | dict:
     """Extract information using Google Gemini API."""
     key = api_key or os.getenv("GEMINI_API_KEY")
@@ -125,10 +125,10 @@ def parse_with_gemini(
 def parse_with_openai(
     dom_content: str,
     parse_description: str,
-    api_key: str = None,
+    api_key: Optional[str] = None,
     model_name: str = "gpt-4o-mini",
     output_format: str = "markdown",
-    schema_class: Type[BaseModel] = None
+    schema_class: Optional[Type[BaseModel]] = None
 ) -> str | list | dict:
     """Extract information using OpenAI API."""
     key = api_key or os.getenv("OPENAI_API_KEY")
@@ -172,9 +172,9 @@ def parse_with_ollama(
     dom_chunks: list[str],
     parse_description: str,
     model_name: str = "llama3.1",
-    base_url: str = None,
+    base_url: Optional[str] = None,
     output_format: str = "markdown",
-    schema_class: Type[BaseModel] = None,
+    schema_class: Optional[Type[BaseModel]] = None,
     progress_callback=None,
     stop_check=None
 ) -> str | list:
@@ -275,9 +275,9 @@ def extract_with_ai(
     parse_description: str,
     provider: str = "ollama",
     model_name: str = "llama3.1",
-    api_key: str = None,
+    api_key: Optional[str] = None,
     output_format: str = "markdown",
-    schema_class: Type[BaseModel] = None,
+    schema_class: Optional[Type[BaseModel]] = None,
     progress_callback=None,
     stop_check=None
 ):
@@ -309,8 +309,8 @@ def extract_with_ai(
     elif provider == "ollama":
         try:
             from .scrape import split_dom_content
-        except ImportError:
-            from scrape import split_dom_content
+        except (ImportError, ValueError):
+            from omniscrape.engine.scrape import split_dom_content
         chunks = split_dom_content(dom_content, max_length=5000)
         return parse_with_ollama(
             dom_chunks=chunks,
@@ -329,9 +329,9 @@ def extract_with_ai(
 def extract_with_vision(
     image_path: str,
     parse_description: str,
-    api_key: str = None,
+    api_key: Optional[str] = None,
     model_name: str = "gemini-2.5-flash",
-    schema_class: Type[BaseModel] = None
+    schema_class: Optional[Type[BaseModel]] = None
 ) -> str | list | dict:
     """
     Extract structured or markdown content visually from a webpage screenshot using Gemini Vision.

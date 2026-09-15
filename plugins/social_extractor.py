@@ -1,7 +1,7 @@
 # plugins/social_extractor.py - Example Custom Tool Plugin
 import re
 from typing import Dict, Any
-from tools import register_tool
+from omniscrape.copilot.tools import register_tool
 
 
 @register_tool(

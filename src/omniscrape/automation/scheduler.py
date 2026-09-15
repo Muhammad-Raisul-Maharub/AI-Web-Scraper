@@ -19,17 +19,17 @@ try:
     from ..models.schemas import EXTRACTION_TEMPLATES
     from .webhook import send_webhook
 except (ImportError, ValueError):
-    from db import get_db, save_scrape, save_extraction, detect_price_changes
-    from outputs import default_output_manager
-    from scrape import (
+    from omniscrape.storage.db import get_db, save_scrape, save_extraction, detect_price_changes
+    from omniscrape.storage.outputs import default_output_manager
+    from omniscrape.engine.scrape import (
         scrape_website,
         extract_body_content,
         clean_body_content,
         extract_animation_assets
     )
-    from parse import extract_with_ai
-    from schemas import EXTRACTION_TEMPLATES
-    from webhook import send_webhook
+    from omniscrape.engine.parse import extract_with_ai
+    from omniscrape.models.schemas import EXTRACTION_TEMPLATES
+    from omniscrape.automation.webhook import send_webhook
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
@@ -109,7 +109,7 @@ def create_job(
             next_run
         ))
         conn.commit()
-        return cursor.lastrowid
+        return int(cursor.lastrowid or 0)
 
 
 def list_jobs(active_only: bool = False) -> List[Dict[str, Any]]:
@@ -322,8 +322,8 @@ def execute_job_pipeline(job: Dict[str, Any]) -> Dict[str, Any]:
             }
 
         # Check webhook alert trigger
-        should_alert = webhook_url and (diff_detected or not alert_on_change_only)
-        if should_alert:
+        should_alert = bool(webhook_url) and (diff_detected or not alert_on_change_only)
+        if should_alert and webhook_url:
             alert_title = f"🔔 Scraping Monitor Alert: {job['name']}"
             alert_payload = {
                 "job": job["name"],
@@ -333,7 +333,7 @@ def execute_job_pipeline(job: Dict[str, Any]) -> Dict[str, Any]:
                 "timestamp": now_str,
                 "details": details
             }
-            send_webhook(webhook_url, alert_title, json.dumps(alert_payload, indent=2))
+            send_webhook(str(webhook_url), alert_title, json.dumps(alert_payload, indent=2))
             summary += " [Webhook Alert Dispatched]"
 
         status = "success"

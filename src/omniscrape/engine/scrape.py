@@ -4,6 +4,7 @@ import re
 import time
 import json
 import logging
+from typing import Optional, List, Dict, Any, Union
 from urllib.parse import urlparse, urljoin
 import requests
 from bs4 import BeautifulSoup
@@ -157,7 +158,7 @@ def clean_body_content(body_content: str) -> str:
 
     # Strip base64 inline images
     for img in soup.find_all("img"):
-        src = img.get("src", "")
+        src = str(img.get("src", "") or "")
         if src.startswith("data:"):
             img.decompose()
 
@@ -272,7 +273,7 @@ def dive_deep(
             # Extract internal links
             soup = BeautifulSoup(html, "html.parser")
             for a_tag in soup.find_all("a", href=True):
-                href = a_tag["href"]
+                href = str(a_tag["href"])
                 abs_url = urljoin(current_url, href)
                 parsed_abs = urlparse(abs_url)
 
@@ -285,7 +286,7 @@ def dive_deep(
     return results
 
 
-def capture_page_screenshot(url: str, output_path: str = None, timeout: int = 30) -> str:
+def capture_page_screenshot(url: str, output_path: Optional[str] = None, timeout: int = 30) -> str:
     """
     Capture a high-resolution full-page screenshot using Headless Chrome.
     """
@@ -472,19 +473,19 @@ def extract_animation_assets(html_content: str, base_url: str) -> dict:
 
     # 1. Lottie Animations
     for tag in soup.find_all(["lottie-player", "dotlottie-player"]):
-        src = tag.get("src") or tag.get("data-src")
+        src = str(tag.get("src") or tag.get("data-src") or "")
         if src:
             abs_src = urljoin(base_url, src)
             results["lottie_files"].append({
                 "type": "lottie-player",
                 "url": abs_src,
-                "loop": tag.get("loop", "false"),
-                "autoplay": tag.get("autoplay", "false")
+                "loop": str(tag.get("loop", "false")),
+                "autoplay": str(tag.get("autoplay", "false"))
             })
 
     # Search script tags and attributes for .json lottie or bodymovin links
     for script in soup.find_all("script"):
-        src = script.get("src", "")
+        src = str(script.get("src", "") or "")
         if src and (".json" in src.lower() or "lottie" in src.lower()):
             abs_src = urljoin(base_url, src)
             if abs_src not in [item["url"] for item in results["lottie_files"]]:
@@ -503,13 +504,14 @@ def extract_animation_assets(html_content: str, base_url: str) -> dict:
 
     # 2. Rive Animations (.riv)
     for canvas in soup.find_all(["canvas", "div"]):
-        rive_src = canvas.get("data-rive-src") or canvas.get("data-src") or canvas.get("src")
+        rive_src = str(canvas.get("data-rive-src") or canvas.get("data-src") or canvas.get("src") or "")
         if rive_src and rive_src.endswith(".riv"):
             results["rive_files"].append({"url": urljoin(base_url, rive_src), "type": "rive-canvas"})
 
     for a_tag in soup.find_all("a", href=True):
-        if a_tag["href"].endswith(".riv"):
-            results["rive_files"].append({"url": urljoin(base_url, a_tag["href"]), "type": "rive-link"})
+        href = str(a_tag.get("href", "") or "")
+        if href.endswith(".riv"):
+            results["rive_files"].append({"url": urljoin(base_url, href), "type": "rive-link"})
 
     # 3. Animated SVGs & Vector Motion
     for svg in soup.find_all("svg"):
@@ -523,19 +525,19 @@ def extract_animation_assets(html_content: str, base_url: str) -> dict:
             })
 
     for img in soup.find_all(["img", "object", "embed"]):
-        src = img.get("src") or img.get("data") or ""
+        src = str(img.get("src") or img.get("data") or "")
         if src.lower().endswith(".svg"):
             abs_src = urljoin(base_url, src)
             results["svg_animations"].append({"type": "svg-file", "url": abs_src})
 
     # 4. Animated Media (GIF, WebP animations, MP4, WebM clips)
     for img in soup.find_all("img"):
-        src = img.get("src") or img.get("data-src") or ""
+        src = str(img.get("src") or img.get("data-src") or "")
         if src.lower().endswith((".gif", ".apng")):
             results["motion_media"].append({"type": "gif", "url": urljoin(base_url, src)})
 
     for video in soup.find_all(["video", "source"]):
-        src = video.get("src") or ""
+        src = str(video.get("src") or "")
         if src.lower().endswith((".mp4", ".webm", ".ogg")):
             abs_src = urljoin(base_url, src)
             if abs_src not in [m["url"] for m in results["motion_media"]]:
@@ -547,7 +549,7 @@ def extract_animation_assets(html_content: str, base_url: str) -> dict:
         "scrollmagic", "pixi", "locomotive-scroll", "barba", "typed", "particles"
     ]
     for script in soup.find_all("script", src=True):
-        src = script["src"]
+        src = str(script.get("src", "") or "")
         src_lower = src.lower()
         for lib in known_anim_libs:
             if lib in src_lower:
@@ -673,7 +675,7 @@ def scrape_animations_from_driver(driver, base_url: str = "") -> dict:
     return results
 
 
-def bundle_animations_zip(assets_dict: dict, base_url: str = None) -> bytes:
+def bundle_animations_zip(assets_dict: dict, base_url: Optional[str] = None) -> bytes:
     """
     Download discovered animation assets and package them into an in-memory ZIP archive.
     """

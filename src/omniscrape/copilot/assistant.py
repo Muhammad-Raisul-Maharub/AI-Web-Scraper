@@ -13,7 +13,7 @@ try:
         get_gemini_tool_declarations
     )
 except (ImportError, ValueError):
-    from tools import (
+    from omniscrape.copilot.tools import (
         get_all_tools,
         execute_tool,
         get_openai_tool_definitions,
@@ -84,19 +84,21 @@ def _run_with_gemini(
             contents=contents,
             config=types.GenerateContentConfig(
                 system_instruction=COPILOT_SYSTEM_PROMPT,
-                tools=gemini_tools,
+                tools=gemini_tools,  # type: ignore[arg-type]
                 temperature=0.2
             )
         )
 
+        if not response.candidates:
+            break
         candidate = response.candidates[0]
-        model_part = candidate.content.parts[0] if candidate.content.parts else None
+        model_part = candidate.content.parts[0] if (candidate.content and candidate.content.parts) else None
 
         # Check for function call
         if model_part and hasattr(model_part, "function_call") and model_part.function_call:
             fc = model_part.function_call
-            tool_name = fc.name
-            tool_args = dict(fc.args)
+            tool_name = str(fc.name or "")
+            tool_args: Dict[str, Any] = dict(fc.args or {}) if hasattr(fc, "args") and fc.args else {}
 
             if on_tool_call:
                 on_tool_call(tool_name, tool_args)
@@ -132,30 +134,34 @@ def _run_with_gemini(
 
     return {
         "role": "assistant",
-        "content": response.text or "Completed tool actions.",
+        "content": "Max tool execution steps reached.",
         "tool_executions": tool_executions
     }
 
 
 def _run_with_openai(
     messages: List[Dict[str, str]],
-    api_key: str,
     model_name: str = "gpt-4o-mini",
+    api_key: Optional[str] = None,
     on_tool_call: Optional[Callable[[str, Dict[str, Any]], None]] = None
 ) -> Dict[str, Any]:
-    """Execute conversational turn using OpenAI with tool calling."""
+    """Execute conversational turn with OpenAI models supporting native tool calling."""
+    key = api_key or os.getenv("OPENAI_API_KEY")
+    if not key:
+        raise ValueError("OpenAI API Key is missing. Please provide it in the UI or in your .env file.")
+
     from openai import OpenAI
-    client = OpenAI(api_key=api_key)
+    client = OpenAI(api_key=key)
 
     tools = get_openai_tool_definitions()
-    formatted_msgs = [{"role": "system", "content": COPILOT_SYSTEM_PROMPT}] + messages
+    formatted_msgs: List[Any] = [{"role": "system", "content": COPILOT_SYSTEM_PROMPT}] + list(messages)
     tool_executions = []
 
     for _ in range(4):
         completion = client.chat.completions.create(
             model=model_name or "gpt-4o-mini",
             messages=formatted_msgs,
-            tools=tools,
+            tools=tools,  # type: ignore
             temperature=0.2
         )
 
@@ -165,29 +171,31 @@ def _run_with_openai(
             formatted_msgs.append(response_msg)
 
             for tc in response_msg.tool_calls:
-                t_name = tc.function.name
-                t_args = json.loads(tc.function.arguments)
+                func = getattr(tc, "function", None)
+                if func:
+                    t_name = str(getattr(func, "name", ""))
+                    t_args = json.loads(getattr(func, "arguments", "{}"))
 
-                if on_tool_call:
-                    on_tool_call(t_name, t_args)
+                    if on_tool_call:
+                        on_tool_call(t_name, t_args)
 
-                logging.info(f"OpenAI calling tool '{t_name}' with args: {t_args}")
-                try:
-                    t_output = execute_tool(t_name, t_args)
-                except Exception as e:
-                    t_output = {"error": str(e)}
+                    logging.info(f"OpenAI calling tool '{t_name}' with args: {t_args}")
+                    try:
+                        t_output = execute_tool(t_name, t_args)
+                    except Exception as e:
+                        t_output = {"error": str(e)}
 
-                tool_executions.append({"tool": t_name, "args": t_args, "output": t_output})
+                    tool_executions.append({"tool": t_name, "args": t_args, "output": t_output})
 
-                formatted_msgs.append({
-                    "role": "tool",
-                    "tool_call_id": tc.id,
-                    "content": json.dumps(t_output, default=str)
-                })
+                    formatted_msgs.append({
+                        "role": "tool",
+                        "tool_call_id": tc.id,
+                        "content": json.dumps(t_output, default=str)
+                    })
         else:
             return {
                 "role": "assistant",
-                "content": response_msg.content or "",
+                "content": response_msg.content or "Completed tool actions.",
                 "tool_executions": tool_executions
             }
 
@@ -201,7 +209,7 @@ def _run_with_openai(
 def _run_with_ollama(
     messages: List[Dict[str, str]],
     model_name: str = "llama3.1",
-    base_url: str = None,
+    base_url: Optional[str] = None,
     on_tool_call: Optional[Callable[[str, Dict[str, Any]], None]] = None
 ) -> Dict[str, Any]:
     """Execute conversational turn with local Ollama using ReAct pattern."""

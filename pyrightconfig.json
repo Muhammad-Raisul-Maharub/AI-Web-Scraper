@@ -1,0 +1,10 @@
+{
+  "venvPath": ".",
+  "venv": "venv",
+  "extraPaths": [
+    "src",
+    "."
+  ],
+  "typeCheckingMode": "basic",
+  "reportMissingImports": "warning"
+}

@@ -4,11 +4,17 @@ import zipfile
 import io
 import unittest
 import os
+import sys
 import shutil
 import tempfile
 from fastapi.testclient import TestClient
 
-from scrape import (
+# Ensure src is on sys.path
+_src_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src"))
+if _src_dir not in sys.path:
+    sys.path.insert(0, _src_dir)
+
+from omniscrape.engine.scrape import (
     extract_body_content,
     clean_body_content,
     split_dom_content,
@@ -16,9 +22,10 @@ from scrape import (
     scrape_animations,
     bundle_animations_zip
 )
-from tools import get_all_tools, execute_tool
-from outputs import RunOutputManager, default_output_manager
-from api import app
+from omniscrape.copilot.tools import get_all_tools, execute_tool
+from omniscrape.storage.outputs import RunOutputManager, default_output_manager
+from omniscrape.automation import scheduler
+from omniscrape.api import app
 
 SAMPLE_ANIMATION_HTML = """
 <!DOCTYPE html>
@@ -161,7 +168,6 @@ class TestAnimationAndScraper(unittest.TestCase):
         self.assertIn("css_keyframes", data)
 
     def test_scheduler_crud_and_execution(self):
-        import scheduler
         # Create
         job_id = scheduler.create_job(
             name="Unit Test Job",
@@ -174,6 +180,7 @@ class TestAnimationAndScraper(unittest.TestCase):
         # Get
         job = scheduler.get_job(job_id)
         self.assertIsNotNone(job)
+        assert job is not None
         self.assertEqual(job["name"], "Unit Test Job")
 
         # Run Now
@@ -188,6 +195,8 @@ class TestAnimationAndScraper(unittest.TestCase):
         toggled = scheduler.toggle_job(job_id)
         self.assertTrue(toggled)
         updated_job = scheduler.get_job(job_id)
+        self.assertIsNotNone(updated_job)
+        assert updated_job is not None
         self.assertEqual(updated_job["is_active"], 0)
 
         # Delete
@@ -253,6 +262,7 @@ class TestAnimationAndScraper(unittest.TestCase):
             # 4. Read metadata
             run_record = mgr.get_run(run_id)
             self.assertIsNotNone(run_record)
+            assert run_record is not None
             self.assertEqual(run_record["metadata"]["status"], "success")
             self.assertEqual(run_record["metadata"]["url"], "https://example.com/test")
             self.assertIn("cleaned_dom.txt", run_record["metadata"]["files"])
@@ -266,6 +276,7 @@ class TestAnimationAndScraper(unittest.TestCase):
             # 6. Export zip
             zip_buf = mgr.export_run_zip(run_id)
             self.assertIsNotNone(zip_buf)
+            assert zip_buf is not None
             with zipfile.ZipFile(zip_buf, "r") as zf:
                 names = zf.namelist()
                 self.assertIn("metadata.json", names)

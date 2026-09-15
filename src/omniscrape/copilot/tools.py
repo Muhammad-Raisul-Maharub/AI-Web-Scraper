@@ -7,44 +7,25 @@ import importlib.util
 from typing import Callable, Dict, Any, List, Optional
 from pydantic import BaseModel
 
-try:
-    from ..engine.scrape import (
-        scrape_website,
-        extract_body_content,
-        clean_body_content,
-        capture_page_screenshot,
-        extract_animation_assets
-    )
-    from ..engine.parse import extract_with_ai
-    from ..models.schemas import EXTRACTION_TEMPLATES, create_dynamic_model
-    from ..storage.db import (
-        save_scrape,
-        save_extraction,
-        get_recent_scrapes,
-        get_recent_extractions,
-        detect_price_changes
-    )
-    from ..storage.outputs import default_output_manager
-    from ..automation.webhook import send_webhook
-except (ImportError, ValueError):
-    from scrape import (
-        scrape_website,
-        extract_body_content,
-        clean_body_content,
-        capture_page_screenshot,
-        extract_animation_assets
-    )
-    from parse import extract_with_ai
-    from schemas import EXTRACTION_TEMPLATES, create_dynamic_model
-    from db import (
-        save_scrape,
-        save_extraction,
-        get_recent_scrapes,
-        get_recent_extractions,
-        detect_price_changes
-    )
-    from outputs import default_output_manager
-    from webhook import send_webhook
+from ..engine.scrape import (
+    scrape_website,
+    extract_body_content,
+    clean_body_content,
+    capture_page_screenshot,
+    extract_animation_assets
+)
+from ..engine.parse import extract_with_ai
+from ..models.schemas import EXTRACTION_TEMPLATES, create_dynamic_model
+from ..storage.db import (
+    save_scrape,
+    save_extraction,
+    get_recent_scrapes,
+    get_recent_extractions,
+    detect_price_changes
+)
+from ..storage.outputs import default_output_manager
+from ..automation.webhook import send_webhook
+from ..automation import scheduler
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
@@ -362,10 +343,6 @@ def tool_schedule_scrape_job(
     scrape_type: str = "text",
     webhook_url: Optional[str] = None
 ) -> Dict[str, Any]:
-    try:
-        from ..automation import scheduler
-    except (ImportError, ValueError):
-        import scheduler
     job_id = scheduler.create_job(
         name=name,
         url=url,
@@ -391,10 +368,6 @@ def tool_schedule_scrape_job(
     }
 )
 def tool_list_scrape_jobs() -> Dict[str, Any]:
-    try:
-        from ..automation import scheduler
-    except (ImportError, ValueError):
-        import scheduler
     jobs = scheduler.list_jobs()
     return {
         "total_jobs": len(jobs),
@@ -414,10 +387,6 @@ def tool_list_scrape_jobs() -> Dict[str, Any]:
     }
 )
 def tool_trigger_scrape_job(job_id: int) -> Dict[str, Any]:
-    try:
-        from ..automation import scheduler
-    except (ImportError, ValueError):
-        import scheduler
     return scheduler.trigger_job_now(job_id)
 
 
@@ -465,7 +434,7 @@ def get_gemini_tool_declarations() -> List[Dict[str, Any]]:
     return declarations
 
 
-def load_plugins(plugins_dir: str = None):
+def load_plugins(plugins_dir: Optional[str] = None):
     """
     Dynamically load custom Python plugins from a directory.
     Any Python file with functions decorated by @register_tool will be automatically added.
@@ -488,9 +457,10 @@ def load_plugins(plugins_dir: str = None):
             file_path = os.path.join(plugins_dir, filename)
             try:
                 spec = importlib.util.spec_from_file_location(module_name, file_path)
-                mod = importlib.util.module_from_spec(spec)
-                sys.modules[module_name] = mod
-                spec.loader.exec_module(mod)
-                logging.info(f"Loaded custom plugin: {filename}")
+                if spec and spec.loader:
+                    mod = importlib.util.module_from_spec(spec)
+                    sys.modules[module_name] = mod
+                    spec.loader.exec_module(mod)
+                    logging.info(f"Loaded custom plugin: {filename}")
             except Exception as e:
                 logging.error(f"Failed to load plugin {filename}: {e}")

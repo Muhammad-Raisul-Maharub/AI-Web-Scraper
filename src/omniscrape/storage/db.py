@@ -104,7 +104,7 @@ def save_scrape(url: str, mode: str, raw_html: str, cleaned_text: str) -> int:
             VALUES (?, ?, ?, ?, ?, ?)
         """, (url, mode, c_hash, len(raw_html), len(cleaned_text), cleaned_text))
         conn.commit()
-        return cursor.lastrowid
+        return cursor.lastrowid or 0
 
 
 def save_extraction(scrape_id: Optional[int], url: str, template: str, prompt: str, results_data: Any) -> int:
@@ -118,7 +118,7 @@ def save_extraction(scrape_id: Optional[int], url: str, template: str, prompt: s
             VALUES (?, ?, ?, ?, ?)
         """, (scrape_id, url, template, prompt, json_str))
         conn.commit()
-        return cursor.lastrowid
+        return cursor.lastrowid or 0
 
 
 def get_recent_scrapes(limit: int = 15) -> List[Dict[str, Any]]:

@@ -37,7 +37,7 @@ from omniscrape.storage.outputs import default_output_manager
 from omniscrape.automation.webhook import send_webhook
 from omniscrape.copilot.tools import get_all_tools
 from omniscrape.copilot.assistant import run_copilot_turn
-import scheduler
+from omniscrape.automation import scheduler
 
 load_dotenv()
 
@@ -230,9 +230,10 @@ with tab_copilot:
             if "tool_executions" in msg and msg["tool_executions"]:
                 with st.expander(f"🛠️ Tool Invocations ({len(msg['tool_executions'])})"):
                     for te in msg["tool_executions"]:
-                        st.markdown(f"**Called:** `{te['tool']}`")
-                        st.caption(f"Arguments: `{json.dumps(te.get('args', {}))}`")
-                        st.json(te.get("output", {}))
+                        if isinstance(te, dict):
+                            st.markdown(f"**Called:** `{te.get('tool', 'tool')}`")
+                            st.caption(f"Arguments: `{json.dumps(te.get('args', {}))}`")
+                            st.json(te.get("output", {}))
 
     # User Input Field
     user_prompt = st.chat_input("Ask Copilot (e.g. 'Scrape quotes.toscrape.com and list authors', 'Take a screenshot of news.ycombinator.com')")
@@ -312,9 +313,9 @@ with tab1:
             with st.spinner("Capturing high-resolution page screenshot..."):
                 try:
                     img_path = capture_page_screenshot(target_url, timeout=timeout)
-                    st.session_state.current_screenshot = img_path
-                    if st.session_state.get("current_run_info"):
-                        default_output_manager.save_image(st.session_state.current_run_info["run_dir"], "screenshot.png", img_path, category="image")
+                    current_run = st.session_state.get("current_run_info")
+                    if isinstance(current_run, dict) and "run_dir" in current_run:
+                        default_output_manager.save_image(current_run["run_dir"], "screenshot.png", img_path, category="image")
                     st.success(f"Screenshot captured and recorded!")
                 except Exception as e:
                     st.error(f"Screenshot error: {e}")
@@ -545,8 +546,8 @@ with tab1:
                             result = extract_with_vision(
                                 image_path=st.session_state.current_screenshot,
                                 parse_description=parse_prompt,
-                                api_key=api_key,
-                                model_name=model_name or "gemini-2.5-flash",
+                                api_key=str(api_key or ""),
+                                model_name=str(model_name or "gemini-2.5-flash"),
                                 schema_class=schema_class
                             )
                         # Text DOM Extraction Mode
@@ -555,8 +556,8 @@ with tab1:
                                 dom_content=dom_text,
                                 parse_description=parse_prompt,
                                 provider=provider_key,
-                                model_name=model_name,
-                                api_key=api_key,
+                                model_name=str(model_name or ""),
+                                api_key=str(api_key or ""),
                                 output_format=fmt_code,
                                 schema_class=schema_class
                             )
@@ -565,8 +566,9 @@ with tab1:
                         save_extraction(None, st.session_state.scraped_url, selected_template or "custom", parse_prompt, result)
 
                         # Save extraction to dedicated run folder
-                        if st.session_state.get("current_run_info"):
-                            cur_run_dir = st.session_state.current_run_info["run_dir"]
+                        current_run = st.session_state.get("current_run_info")
+                        if isinstance(current_run, dict) and "run_dir" in current_run:
+                            cur_run_dir = str(current_run["run_dir"])
                             default_output_manager.save_json(cur_run_dir, "extracted_data.json", result, category="json")
                             if isinstance(result, list) and result:
                                 try:
@@ -828,8 +830,8 @@ with tab_runs:
             for r in all_runs
         }
         selected_run_label = st.selectbox("Select Run to Inspect", list(run_options.keys()))
-        selected_run_id = run_options[selected_run_label]
-        run_details = default_output_manager.get_run(selected_run_id)
+        selected_run_id = str(run_options.get(selected_run_label) or "")
+        run_details = default_output_manager.get_run(selected_run_id) if selected_run_id else None
 
         if run_details:
             # Metadata Summary Card
