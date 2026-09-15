@@ -10,6 +10,8 @@ services:
       - "8501:8501"
     command: ["streamlit", "run", "main.py", "--server.port=8501", "--server.address=0.0.0.0"]
     volumes:
+      - ./data:/app/data
+      - ./outputs:/app/outputs
       - ./screenshots:/app/screenshots
       - scraper_data:/app
     environment:
@@ -29,6 +31,8 @@ services:
       - "8000:8000"
     command: ["uvicorn", "api:app", "--host", "0.0.0.0", "--port", "8000"]
     volumes:
+      - ./data:/app/data
+      - ./outputs:/app/outputs
       - ./screenshots:/app/screenshots
       - scraper_data:/app
     environment:

@@ -1,11 +1,18 @@
-# main.py - OmniScrape AI Dashboard (With AI Copilot, MCP Tools & Scheduler)
+# main.py - OmniScrape AI Dashboard (With AI Copilot, MCP Tools & Runs Explorer)
 import os
+import sys
 import json
+import time
 import pandas as pd
 import streamlit as st
 from dotenv import load_dotenv
 
-from scrape import (
+# Ensure src/ is on sys.path
+_src_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "src")
+if _src_dir not in sys.path:
+    sys.path.insert(0, _src_dir)
+
+from omniscrape.engine.scrape import (
     scrape_website,
     extract_body_content,
     clean_body_content,
@@ -17,18 +24,19 @@ from scrape import (
     extract_animation_assets,
     bundle_animations_zip
 )
-from parse import extract_with_ai, extract_with_vision
-from schemas import EXTRACTION_TEMPLATES, create_dynamic_model
-from db import (
+from omniscrape.engine.parse import extract_with_ai, extract_with_vision
+from omniscrape.models.schemas import EXTRACTION_TEMPLATES, create_dynamic_model
+from omniscrape.storage.db import (
     save_scrape,
     save_extraction,
     get_recent_scrapes,
     get_recent_extractions,
     detect_price_changes
 )
-from webhook import send_webhook
-from tools import get_all_tools
-from assistant import run_copilot_turn
+from omniscrape.storage.outputs import default_output_manager
+from omniscrape.automation.webhook import send_webhook
+from omniscrape.copilot.tools import get_all_tools
+from omniscrape.copilot.assistant import run_copilot_turn
 import scheduler
 
 load_dotenv()
@@ -49,64 +57,62 @@ st.markdown("""
 <style>
     .main-header {
         font-size: 2.3rem;
-        font-weight: 700;
-        margin-bottom: 0.2rem;
-        background: linear-gradient(90deg, #3b82f6, #8b5cf6);
+        font-weight: 800;
+        background: linear-gradient(90deg, #4f46e5, #06b6d4, #10b981);
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
+        margin-bottom: 0px;
     }
     .sub-header {
-        font-size: 1rem;
         color: #94a3b8;
-        margin-bottom: 1.5rem;
+        font-size: 1.05rem;
+        margin-bottom: 25px;
     }
-    .schema-badge {
-        display: inline-block;
+    .metric-card {
         background-color: #1e293b;
-        color: #38bdf8;
-        border: 1px solid #0284c7;
-        border-radius: 4px;
-        padding: 2px 8px;
-        margin: 2px;
-        font-size: 0.85rem;
+        border-radius: 10px;
+        padding: 15px;
+        border: 1px solid #334155;
+        text-align: center;
     }
     .tool-badge {
-        display: inline-block;
-        background-color: #064e3b;
-        color: #34d399;
-        border: 1px solid #059669;
-        border-radius: 4px;
-        padding: 2px 8px;
-        margin: 2px;
-        font-size: 0.82rem;
+        background-color: #312e81;
+        color: #c7d2fe;
+        padding: 3px 8px;
+        border-radius: 12px;
+        font-size: 0.8rem;
+        font-weight: 600;
+        margin-right: 5px;
     }
 </style>
 """, unsafe_allow_html=True)
 
-# Initialize Session States
+# Initialize Session State
 if "scraped_dom" not in st.session_state:
     st.session_state.scraped_dom = None
 if "scraped_raw_html" not in st.session_state:
-    st.session_state.scraped_raw_html = ""
+    st.session_state.scraped_raw_html = None
 if "scraped_url" not in st.session_state:
     st.session_state.scraped_url = ""
+if "current_screenshot" not in st.session_state:
+    st.session_state.current_screenshot = None
 if "crawled_results" not in st.session_state:
     st.session_state.crawled_results = []
 if "extracted_data" not in st.session_state:
     st.session_state.extracted_data = None
-if "current_screenshot" not in st.session_state:
-    st.session_state.current_screenshot = None
 if "detected_price_changes" not in st.session_state:
     st.session_state.detected_price_changes = []
 if "scraped_animations" not in st.session_state:
     st.session_state.scraped_animations = None
 if "animation_zip_bytes" not in st.session_state:
     st.session_state.animation_zip_bytes = None
+if "current_run_info" not in st.session_state:
+    st.session_state.current_run_info = None
 if "copilot_messages" not in st.session_state:
     st.session_state.copilot_messages = [
         {
             "role": "assistant",
-            "content": "👋 Hello! I am your **AI Scraping Copilot**. Ask me to scrape any webpage, extract structured data into tables, take full-page screenshots, or inspect price tracking history!"
+            "content": "👋 Hello! I am your **AI Scraping Copilot**. Ask me to scrape any webpage, extract structured data into tables, take full-page screenshots, or inspect past execution runs!"
         }
     ]
 
@@ -191,16 +197,17 @@ with st.sidebar:
 # Main App Header
 st.markdown('<div class="main-header">🌐 OmniScrape AI</div>', unsafe_allow_html=True)
 st.markdown(
-    '<div class="sub-header">Autonomous multi-modal web scraping, animation extraction, Pydantic schemas, MCP tools & background monitoring.</div>',
+    '<div class="sub-header">Autonomous multi-modal web scraping, animation extraction, Pydantic schemas, isolated run outputs & background monitoring.</div>',
     unsafe_allow_html=True
 )
 
-tab_copilot, tab1, tab2, tab3, tab4, tab_scheduler = st.tabs([
+tab_copilot, tab1, tab2, tab3, tab4, tab_runs, tab_scheduler = st.tabs([
     "💬 AI Assistant Copilot",
     "🔍 Scrape & Extract",
     "🌐 Crawl & Pagination",
     "⚡ Quick Keyword Search",
     "📊 History & Price Tracker",
+    "📁 Outputs & Runs Explorer",
     "🕒 Automated Scheduler & Monitor"
 ])
 
@@ -223,54 +230,31 @@ with tab_copilot:
             if "tool_executions" in msg and msg["tool_executions"]:
                 with st.expander(f"🛠️ Tool Invocations ({len(msg['tool_executions'])})"):
                     for te in msg["tool_executions"]:
-                        st.markdown(f"**Tool:** `{te['tool']}`")
-                        st.json(te.get("args", {}))
-                        st.caption("Result Summary:")
-                        st.code(str(te.get("output", ""))[:400] + "...")
+                        st.markdown(f"**Called:** `{te['tool']}`")
+                        st.caption(f"Arguments: `{json.dumps(te.get('args', {}))}`")
+                        st.json(te.get("output", {}))
 
-    # Starter prompts if history is minimal
-    if len(st.session_state.copilot_messages) <= 1:
-        st.markdown("**Try a quick prompt:**")
-        col_s1, col_s2, col_s3 = st.columns(3)
-        with col_s1:
-            if st.button("Quotes Authors & Tags"):
-                st.session_state.copilot_input = "Scrape https://quotes.toscrape.com and list the top 3 quotes and their authors."
-        with col_s2:
-            if st.button("Check Price History"):
-                st.session_state.copilot_input = "Query the scrape history and check if any price shifts were recorded."
-        with col_s3:
-            if st.button("Capture Books Screenshot"):
-                st.session_state.copilot_input = "Take a screenshot of https://books.toscrape.com and tell me what the page looks like."
+    # User Input Field
+    user_prompt = st.chat_input("Ask Copilot (e.g. 'Scrape quotes.toscrape.com and list authors', 'Take a screenshot of news.ycombinator.com')")
 
-    # Chat Input Box
-    user_query = st.chat_input("Ask the copilot to scrape, extract, or analyze...")
-    if "copilot_input" in st.session_state and st.session_state.copilot_input:
-        user_query = st.session_state.copilot_input
-        st.session_state.copilot_input = None
-
-    if user_query:
-        # Append User Message
-        st.session_state.copilot_messages.append({"role": "user", "content": user_query})
+    if user_prompt:
+        st.session_state.copilot_messages.append({"role": "user", "content": user_prompt})
         with st.chat_message("user"):
-            st.markdown(user_query)
+            st.markdown(user_prompt)
 
-        # Assistant Execution
         with st.chat_message("assistant"):
-            provider_key = {
-                "Google Gemini": "gemini",
-                "Local Ollama": "ollama",
-                "OpenAI": "openai"
-            }[ai_provider]
+            status_placeholder = st.status("Thinking and planning tools...", expanded=True)
 
-            status_placeholder = st.status("🧠 Copilot reasoning...", expanded=True)
-            tool_call_log = []
-
-            def handle_tool_call(tool_name, tool_args):
-                status_placeholder.write(f"⚡ **Executing tool:** `{tool_name}`")
-                tool_call_log.append({"tool": tool_name, "args": tool_args})
+            def handle_tool_call(name, args):
+                status_placeholder.write(f"⚙️ Running tool **{name}** with `{json.dumps(args)}`...")
 
             try:
-                # Format messages for assistant
+                provider_key = {
+                    "Google Gemini": "gemini",
+                    "Local Ollama": "ollama",
+                    "OpenAI": "openai"
+                }[ai_provider]
+
                 formatted_history = [
                     {"role": m["role"], "content": m["content"]}
                     for m in st.session_state.copilot_messages
@@ -329,7 +313,9 @@ with tab1:
                 try:
                     img_path = capture_page_screenshot(target_url, timeout=timeout)
                     st.session_state.current_screenshot = img_path
-                    st.success("Screenshot captured!")
+                    if st.session_state.get("current_run_info"):
+                        default_output_manager.save_image(st.session_state.current_run_info["run_dir"], "screenshot.png", img_path, category="image")
+                    st.success(f"Screenshot captured and recorded!")
                 except Exception as e:
                     st.error(f"Screenshot error: {e}")
 
@@ -342,26 +328,44 @@ with tab1:
         if not target_url:
             st.warning("Please enter a valid website URL.")
         else:
+            start_scrape_time = time.time()
             with st.status(f"Fetching content from {target_url}...", expanded=True) as status:
                 try:
                     st.write(f"Connecting using **{scraper_mode}** engine...")
                     raw_html = scrape_website(target_url, mode=scraper_mode, timeout=timeout)
 
-                    if "Animations" in scrape_target_type:
+                    # Initialize dedicated isolated run folder
+                    is_anim = "Animations" in scrape_target_type
+                    run_info = default_output_manager.create_run(
+                        url=target_url,
+                        task_type="animations" if is_anim else "scrape",
+                        mode=scraper_mode
+                    )
+                    st.session_state.current_run_info = run_info
+                    run_dir = run_info["run_dir"]
+                    default_output_manager.save_text(run_dir, "raw_page.html", raw_html, category="html")
+
+                    if is_anim:
                         st.write("Inspecting and extracting animation & motion assets...")
                         anim_assets = extract_animation_assets(raw_html, base_url=target_url)
+                        default_output_manager.save_json(run_dir, "animation_assets.json", anim_assets, category="json")
+
                         st.write("Packaging discovered assets into ZIP archive...")
                         zip_bytes = bundle_animations_zip(anim_assets, base_url=target_url)
+                        default_output_manager.save_zip(run_dir, "animations.zip", zip_bytes, category="archive")
+                        default_output_manager.finalize_run(run_dir, status="success", duration_seconds=time.time() - start_scrape_time)
 
                         st.session_state.scraped_animations = anim_assets
                         st.session_state.animation_zip_bytes = zip_bytes
                         st.session_state.scraped_dom = None
                         st.session_state.scraped_url = target_url
-                        status.update(label=f"Extracted {anim_assets['total_assets_count']} animation assets!", state="complete")
+                        status.update(label=f"Extracted {anim_assets['total_assets_count']} animation assets! (Saved in run `{run_info['run_id']}`)", state="complete")
                     else:
                         st.write("Extracting and cleaning DOM...")
                         body = extract_body_content(raw_html)
                         cleaned = clean_body_content(body)
+                        default_output_manager.save_text(run_dir, "cleaned_dom.txt", cleaned, category="text")
+                        default_output_manager.finalize_run(run_dir, status="success", duration_seconds=time.time() - start_scrape_time)
 
                         # Save to SQLite database
                         scrape_id = save_scrape(target_url, scraper_mode, raw_html, cleaned)
@@ -373,176 +377,156 @@ with tab1:
                         st.session_state.animation_zip_bytes = None
                         st.session_state.extracted_data = None
                         st.session_state.detected_price_changes = []
-                        status.update(label=f"Scraping completed & saved (ID: #{scrape_id})!", state="complete")
+                        status.update(label=f"Scraping completed & saved in run `{run_info['run_id']}` (DB ID: #{scrape_id})!", state="complete")
                 except Exception as e:
                     status.update(label=f"Failed to scrape: {e}", state="error")
                     st.error(f"Error scraping website: {e}")
 
-    # Display Scraped Animation Assets if available
+    # Display Animation Asset Breakdown if scraped
     if st.session_state.scraped_animations:
-        anim = st.session_state.scraped_animations
-        st.markdown("---")
+        anim_data = st.session_state.scraped_animations
+        st.markdown(f"### 🎬 Discovered Motion & Animation Assets ({anim_data['total_assets_count']} Total)")
 
-        col_hdr, col_dl = st.columns([3, 1])
-        with col_hdr:
-            st.markdown(f"### 🎬 Discovered Animation Assets ({anim['total_assets_count']})")
-            st.caption(f"Target: `{st.session_state.scraped_url}`")
-        with col_dl:
-            if st.session_state.animation_zip_bytes:
+        col_a1, col_a2, col_a3, col_a4, col_a5 = st.columns(5)
+        col_a1.metric("Lottie JSON", len(anim_data["lottie_files"]))
+        col_a2.metric("Rive (.riv)", len(anim_data["rive_files"]))
+        col_a3.metric("SVGs (SMIL/Keyframes)", len(anim_data["svg_animations"]))
+        col_a4.metric("Motion Media (GIF/MP4)", len(anim_data["motion_media"]))
+        col_a5.metric("CSS Keyframes", len(anim_data["css_keyframes"]))
+
+        # Download ZIP button
+        if st.session_state.animation_zip_bytes:
+            col_z1, col_z2 = st.columns([1, 3])
+            with col_z1:
                 st.download_button(
-                    "📥 Download All (.ZIP)",
+                    "📦 Download All Assets (.ZIP)",
                     data=st.session_state.animation_zip_bytes,
                     file_name="animation_assets.zip",
                     mime="application/zip",
-                    use_container_width=True,
-                    type="primary"
+                    use_container_width=True
                 )
-
-        col_a1, col_a2, col_a3, col_a4, col_a5 = st.columns(5)
-        col_a1.metric("Lottie & Rive", f"{len(anim['lottie_files']) + len(anim['rive_files'])}")
-        col_a2.metric("Animated SVGs", f"{len(anim['svg_animations'])}")
-        col_a3.metric("Motion Media", f"{len(anim['motion_media'])}")
-        col_a4.metric("JS Libs", f"{len(anim['animation_libraries'])}")
-        col_a5.metric("Keyframes", f"{len(anim['css_keyframes'])}")
+            with col_z2:
+                st.caption("Includes manifest.json, downloaded Lottie JSONs, Rive binaries, animated SVGs, looping media, and keyframes.css.")
 
         anim_tab1, anim_tab2, anim_tab3, anim_tab4, anim_tab5, anim_tab6 = st.tabs([
-            f"🎭 Lottie & Rive ({len(anim['lottie_files']) + len(anim['rive_files'])})",
-            f"🌀 SVGs ({len(anim['svg_animations'])})",
-            f"🎞️ Media ({len(anim['motion_media'])})",
-            f"⚡ JS Libraries ({len(anim['animation_libraries'])})",
-            f"🎨 Keyframes ({len(anim['css_keyframes'])})",
-            "📋 Manifest JSON"
+            f"✨ Lottie ({len(anim_data['lottie_files'])})",
+            f"🎯 Rive ({len(anim_data['rive_files'])})",
+            f"🎨 Animated SVGs ({len(anim_data['svg_animations'])})",
+            f"🎥 Media Loops ({len(anim_data['motion_media'])})",
+            f"📜 CSS Keyframes ({len(anim_data['css_keyframes'])})",
+            f"📚 JS Libs ({len(anim_data['animation_libraries'])})"
         ])
 
         with anim_tab1:
-            if not anim['lottie_files'] and not anim['rive_files']:
-                st.info("No Lottie or Rive files detected on this page.")
+            if not anim_data["lottie_files"]:
+                st.info("No Lottie files detected.")
             else:
-                for idx, lf in enumerate(anim['lottie_files']):
-                    with st.expander(f"Lottie #{idx + 1}: [{lf['type']}] {lf.get('url', 'inline')[:60]}", expanded=True):
-                        st.write(f"**Type:** `{lf['type']}`")
-                        if lf.get('url') and lf['url'].startswith('http'):
-                            st.markdown(f"🔗 [Direct URL]({lf['url']})")
+                for idx, lf in enumerate(anim_data["lottie_files"], 1):
+                    with st.expander(f"Lottie #{idx} - Type: {lf['type']}"):
+                        if lf.get("url") and lf["url"] != "inline_data":
+                            st.write(f"**Asset URL:** [{lf['url']}]({lf['url']})")
                         if "preview" in lf:
-                            st.caption("Inline Data Preview:")
-                            st.code(lf['preview'], language="json")
-                for idx, rf in enumerate(anim['rive_files']):
-                    with st.expander(f"Rive #{idx + 1}: {rf['url']}", expanded=True):
-                        st.write(f"**Type:** `{rf['type']}`")
-                        st.markdown(f"🔗 [Direct Rive Asset]({rf['url']})")
+                            st.code(lf["preview"], language="json")
 
         with anim_tab2:
-            if not anim['svg_animations']:
-                st.info("No animated SVG elements or standalone SVGs detected.")
+            if not anim_data["rive_files"]:
+                st.info("No Rive (.riv) animations detected.")
             else:
-                for idx, svg in enumerate(anim['svg_animations']):
-                    if svg.get("type") == "inline-animated-svg":
-                        with st.expander(f"Inline SVG #{idx + 1} (SMIL/CSS animated)", expanded=True):
-                            st.caption("Live Render:")
-                            st.markdown(f"<div style='background:#181824;padding:15px;border-radius:8px;text-align:center;'>{svg['html']}</div>", unsafe_allow_html=True)
-                            st.code(svg['html'][:500] + ("..." if len(svg['html']) > 500 else ""), language="xml")
-                    else:
-                        st.markdown(f"- 📄 **SVG File:** [{svg['url']}]({svg['url']})")
+                for idx, rf in enumerate(anim_data["rive_files"], 1):
+                    st.write(f"- [{rf['type']}] [{rf['url']}]({rf['url']})")
 
         with anim_tab3:
-            if not anim['motion_media']:
-                st.info("No GIF or video loops detected.")
+            if not anim_data["svg_animations"]:
+                st.info("No animated SVGs detected.")
             else:
-                cols = st.columns(min(3, len(anim['motion_media'])) or 1)
-                for idx, m in enumerate(anim['motion_media']):
-                    with cols[idx % len(cols)]:
-                        st.caption(f"{m['type'].upper()} #{idx + 1}")
-                        if m['type'] == 'gif':
-                            st.image(m['url'], use_container_width=True)
-                        elif m['type'] == 'video-loop':
-                            st.video(m['url'])
-                        st.caption(m['url'])
+                for idx, svg_item in enumerate(anim_data["svg_animations"], 1):
+                    with st.expander(f"SVG #{idx} ({svg_item['type']})"):
+                        if "html" in svg_item:
+                            st.code(svg_item["html"], language="html")
+                        if "url" in svg_item:
+                            st.write(f"URL: [{svg_item['url']}]({svg_item['url']})")
 
         with anim_tab4:
-            if not anim['animation_libraries']:
-                st.info("No common animation JavaScript libraries detected.")
+            if not anim_data["motion_media"]:
+                st.info("No motion GIF or video loops detected.")
             else:
-                st.write("Identified Animation Scripts & Engines:")
-                for lib in anim['animation_libraries']:
-                    st.markdown(f"- ⚡ **{lib['library'].upper()}**: `{lib['url']}`")
+                for idx, mm in enumerate(anim_data["motion_media"], 1):
+                    st.write(f"- **{mm['type'].upper()}**: [{mm['url']}]({mm['url']})")
 
         with anim_tab5:
-            if not anim['css_keyframes']:
-                st.info("No CSS @keyframes rules discovered.")
+            if not anim_data["css_keyframes"]:
+                st.info("No CSS @keyframes rules detected.")
             else:
-                for idx, kf in enumerate(anim['css_keyframes']):
-                    with st.expander(f"@keyframes {kf['name']}", expanded=False):
-                        st.code(kf['css'], language="css")
+                for kf in anim_data["css_keyframes"]:
+                    with st.expander(f"@keyframes {kf['name']}"):
+                        st.code(kf["css"], language="css")
 
         with anim_tab6:
-            st.json(anim)
+            if not anim_data["animation_libraries"]:
+                st.info("No known animation JS libraries (GSAP, Three.js, etc.) found in scripts.")
+            else:
+                for lib in anim_data["animation_libraries"]:
+                    st.write(f"- **{lib['library'].upper()}**: [{lib['url']}]({lib['url']})")
 
-    # Display Scraped Content Details if available
+    # Display Cleaned Text DOM View if text mode was scraped
     if st.session_state.scraped_dom:
-        dom_text = st.session_state.scraped_dom
-        est_tokens = len(dom_text) // 4
+        with st.expander("📄 View Scraped & Cleaned Page Text", expanded=False):
+            st.text_area("DOM Content", st.session_state.scraped_dom, height=250)
 
-        col_m1, col_m2, col_m3, col_m4 = st.columns(4)
-        col_m1.metric("Characters", f"{len(dom_text):,}")
-        col_m2.metric("Est. Tokens", f"~{est_tokens:,}")
-        col_m3.metric("Lines of Text", f"{len(dom_text.splitlines()):,}")
-        col_m4.metric("Active URL", st.session_state.scraped_url[:25] + "...")
-
-        with st.expander("📄 View Cleaned DOM Text"):
-            st.text_area("Cleaned DOM", dom_text, height=220, disabled=True)
-
+        # AI Extraction Setup Card
         st.markdown("---")
-        st.subheader("🤖 AI Data Extraction")
+        st.markdown("### 🤖 Structured AI Data Extraction")
 
-        # Vision Mode Toggle
-        col_t1, col_t2 = st.columns([2, 1])
-        with col_t1:
-            template_options = ["✨ Free-Form Prompt (No Schema)"] + list(EXTRACTION_TEMPLATES.keys()) + ["🛠️ Custom Schema Builder"]
-            selected_template = st.selectbox("Select Extraction Schema Template", options=template_options, index=0)
-        with col_t2:
-            use_vision_mode = st.checkbox("👁️ Multimodal Vision Mode", value=False, help="Uses Gemini Vision on the rendered screenshot instead of text DOM.")
+        col_schema_type, col_template = st.columns([1, 2])
+        with col_schema_type:
+            schema_choice = st.radio(
+                "Extraction Schema Mode",
+                ["Pre-configured Template", "Custom Fields", "Free-form Prompt"],
+                index=0
+            )
 
+        selected_template = None
+        custom_field_list = []
         schema_class = None
         default_prompt = ""
 
-        if selected_template in EXTRACTION_TEMPLATES:
-            t_info = EXTRACTION_TEMPLATES[selected_template]
-            schema_class = t_info["model"]
-            default_prompt = t_info["default_prompt"]
-            st.caption(f"ℹ️ {t_info['description']}")
-            fields_html = " ".join([f'<span class="schema-badge">{f}</span>' for f in schema_class.model_fields.keys()])
-            st.markdown(f"**Target Fields:** {fields_html}", unsafe_allow_html=True)
+        with col_template:
+            if schema_choice == "Pre-configured Template":
+                template_name = st.selectbox("Select Domain Template", list(EXTRACTION_TEMPLATES.keys()))
+                t_info = EXTRACTION_TEMPLATES[template_name]
+                st.caption(f"ℹ️ {t_info['description']}")
+                selected_template = template_name
+                schema_class = t_info["model"]
+                default_prompt = t_info["default_prompt"]
 
-        elif selected_template == "🛠️ Custom Schema Builder":
-            custom_fields_input = st.text_input("Enter field names (comma-separated)", placeholder="product_name, price, rating, stock")
-            if custom_fields_input.strip():
-                fields_list = [f.strip() for f in custom_fields_input.split(",") if f.strip()]
-                schema_class = create_dynamic_model(fields_list)
-                fields_html = " ".join([f'<span class="schema-badge">{f}</span>' for f in schema_class.model_fields.keys()])
-                st.markdown(f"**Dynamic Schema Fields:** {fields_html}", unsafe_allow_html=True)
-                default_prompt = f"Extract all items with: {', '.join(fields_list)}."
+            elif schema_choice == "Custom Fields":
+                fields_str = st.text_input("Enter comma-separated field names", placeholder="e.g. title, price, in_stock, rating")
+                if fields_str:
+                    custom_field_list = [f.strip() for f in fields_str.split(",") if f.strip()]
+                    schema_class = create_dynamic_model(custom_field_list)
+                    default_prompt = f"Extract all items with: {', '.join(custom_field_list)}"
 
-        col_p1, col_p2 = st.columns([3, 1])
-        with col_p1:
-            parse_prompt = st.text_area(
-                "Extraction Instructions",
-                value=default_prompt,
-                placeholder="Describe what data to extract...",
-                height=90
+        parse_prompt = st.text_area("Extraction Prompt / Refinements", value=default_prompt, height=80)
+
+        col_fmt, col_vis, col_extract = st.columns([1, 1, 1])
+        with col_fmt:
+            out_fmt = st.selectbox("Output Format", ["Structured JSON (Table)", "Clean Markdown"], index=0)
+            fmt_code = "json" if "JSON" in out_fmt else "markdown"
+        with col_vis:
+            use_vision_mode = st.checkbox(
+                "👁️ Multimodal Vision Mode",
+                help="Extract directly from the rendered page screenshot instead of raw text (Requires Gemini)."
             )
-        with col_p2:
-            if schema_class:
-                st.info("📌 Enforcing strict schema output.")
-                fmt_code = "json"
-            else:
-                output_format = st.radio("Output Format", ["Structured Table / JSON", "Markdown Summary"])
-                fmt_code = "json" if "JSON" in output_format else "markdown"
-
-            extract_clicked = st.button("✨ Extract with AI", use_container_width=True, type="primary")
+        with col_extract:
+            st.write("")
+            st.write("")
+            extract_clicked = st.button("✨ Run AI Extraction", type="primary", use_container_width=True)
 
         if extract_clicked:
-            if not parse_prompt.strip():
-                st.warning("Please provide a prompt describing what to extract.")
+            start_extract_time = time.time()
+            dom_text = st.session_state.scraped_dom
+            if not dom_text and not use_vision_mode:
+                st.warning("Please scrape a website first.")
             else:
                 provider_key = {
                     "Google Gemini": "gemini",
@@ -578,7 +562,23 @@ with tab1:
                             )
 
                         # Save extraction to database
-                        save_extraction(None, st.session_state.scraped_url, selected_template, parse_prompt, result)
+                        save_extraction(None, st.session_state.scraped_url, selected_template or "custom", parse_prompt, result)
+
+                        # Save extraction to dedicated run folder
+                        if st.session_state.get("current_run_info"):
+                            cur_run_dir = st.session_state.current_run_info["run_dir"]
+                            default_output_manager.save_json(cur_run_dir, "extracted_data.json", result, category="json")
+                            if isinstance(result, list) and result:
+                                try:
+                                    default_output_manager.save_csv(cur_run_dir, "extracted_data.csv", result, category="tabular")
+                                except Exception:
+                                    pass
+                            default_output_manager.finalize_run(
+                                cur_run_dir,
+                                status="success",
+                                duration_seconds=time.time() - start_extract_time,
+                                metrics={"extracted_records": len(result) if isinstance(result, list) else 1}
+                            )
 
                         # Price change detection
                         if isinstance(result, list):
@@ -664,11 +664,19 @@ with tab2:
                     p_bar.progress(curr / total)
                     status_text.text(f"Scraping ({curr}/{total}): {url}")
 
+                start_c_time = time.time()
                 with st.spinner("Crawling pages..."):
                     results = dive_deep(crawl_url, max_pages=max_pages, mode=scraper_mode, progress_callback=crawl_progress)
                     st.session_state.crawled_results = results
+
+                    # Save to dedicated run
+                    run_info = default_output_manager.create_run(url=crawl_url, task_type="domain_crawl", mode=scraper_mode)
+                    default_output_manager.save_json(run_info["run_dir"], "crawled_pages.json", results, category="json")
+                    default_output_manager.finalize_run(run_info["run_dir"], status="success", duration_seconds=time.time() - start_c_time, metrics={"pages_crawled": len(results)})
+
                     p_bar.empty()
                     status_text.empty()
+                    st.success(f"Crawl completed! Recorded in run `{run_info['run_id']}`")
 
     elif crawl_type == "Infinite Scroll Feeder":
         st.info("Automatically scrolls down dynamic feeds (like product lists or social catalogs) to trigger infinite loading.")
@@ -682,12 +690,20 @@ with tab2:
             if not scroll_url:
                 st.warning("Please enter a URL.")
             else:
+                start_s_time = time.time()
                 with st.spinner("Auto-scrolling page..."):
                     html = scrape_with_infinite_scroll(scroll_url, max_scrolls=max_scrolls, timeout=timeout)
                     cleaned = clean_body_content(extract_body_content(html))
                     st.session_state.scraped_dom = cleaned
                     st.session_state.scraped_url = scroll_url
-                    st.success(f"Scroll finished! Extracted {len(cleaned):,} characters of feed content.")
+
+                    # Save to dedicated run
+                    run_info = default_output_manager.create_run(url=scroll_url, task_type="infinite_scroll", mode="local")
+                    default_output_manager.save_text(run_info["run_dir"], "raw_feed.html", html, category="html")
+                    default_output_manager.save_text(run_info["run_dir"], "cleaned_dom.txt", cleaned, category="text")
+                    default_output_manager.finalize_run(run_info["run_dir"], status="success", duration_seconds=time.time() - start_s_time)
+
+                    st.success(f"Scroll finished! Extracted {len(cleaned):,} characters and saved in run `{run_info['run_id']}`.")
 
     elif crawl_type == "Next-Button Paginator":
         st.info("Finds and clicks 'Next >' pagination buttons automatically across multiple catalog pages.")
@@ -703,10 +719,17 @@ with tab2:
             if not pag_url:
                 st.warning("Please enter a starting catalog URL.")
             else:
+                start_p_time = time.time()
                 with st.spinner("Navigating across pages..."):
                     pages = scrape_with_pagination(pag_url, next_button_css=next_css, max_pages=pag_limit, timeout=timeout)
                     st.session_state.crawled_results = pages
-                    st.success(f"Successfully scraped {len(pages)} paginated pages!")
+
+                    # Save to dedicated run
+                    run_info = default_output_manager.create_run(url=pag_url, task_type="pagination_scrape", mode="local")
+                    default_output_manager.save_json(run_info["run_dir"], "paginated_pages.json", pages, category="json")
+                    default_output_manager.finalize_run(run_info["run_dir"], status="success", duration_seconds=time.time() - start_p_time, metrics={"pages_scraped": len(pages)})
+
+                    st.success(f"Successfully scraped {len(pages)} paginated pages! Recorded in run `{run_info['run_id']}`.")
 
     # Display Crawled Pages Table if available
     if st.session_state.crawled_results:
@@ -750,7 +773,7 @@ with tab3:
 # ==========================================
 with tab4:
     st.subheader("📊 Scrape History & Price Change Tracker")
-    st.write("Persistent database logs of previous scrapes and detected price shifts.")
+    st.write("Persistent SQLite database logs of previous scrapes and detected price shifts.")
 
     col_h1, col_h2 = st.columns(2)
     with col_h1:
@@ -777,6 +800,193 @@ with tab4:
             st.dataframe(pd.DataFrame(display_ext), use_container_width=True)
         else:
             st.info("No extraction records logged yet.")
+
+
+# ==========================================
+# TAB 5: Outputs & Runs Explorer
+# ==========================================
+with tab_runs:
+    st.subheader("📁 Outputs & Runs Explorer")
+    st.write("Browse, inspect, preview, and download individual execution runs and generated artifacts.")
+
+    all_runs = default_output_manager.list_runs(limit=100)
+
+    col_r1, col_r2, col_r3 = st.columns(3)
+    col_r1.metric("Total Runs", len(all_runs))
+    col_r2.metric("Storage Folder", "outputs/runs/")
+    if all_runs:
+        col_r3.metric("Latest Run", all_runs[0].get("created_at", "N/A"))
+    else:
+        col_r3.metric("Latest Run", "None")
+
+    if not all_runs:
+        st.info("No execution runs recorded yet. Run a scrape, extraction, or animation extraction to view run outputs here!")
+    else:
+        # Selector for run
+        run_options = {
+            f"[{r.get('status', 'unknown').upper()}] {r.get('created_at', 'unknown')} ➔ {r.get('url', 'N/A')[:40]} ({r.get('run_id')})": r.get("run_id")
+            for r in all_runs
+        }
+        selected_run_label = st.selectbox("Select Run to Inspect", list(run_options.keys()))
+        selected_run_id = run_options[selected_run_label]
+        run_details = default_output_manager.get_run(selected_run_id)
+
+        if run_details:
+            # Metadata Summary Card
+            with st.container():
+                col_m1, col_m2, col_m3 = st.columns(3)
+                with col_m1:
+                    st.write(f"**URL:** [{run_details.get('url', 'N/A')}]({run_details.get('url', '#')})")
+                    st.write(f"**Task Type:** `{run_details.get('task_type', 'N/A')}`")
+                    st.write(f"**Mode:** `{run_details.get('mode', 'N/A')}`")
+                with col_m2:
+                    status_val = run_details.get('status', 'unknown')
+                    badge = "🟢 SUCCESS" if status_val == "success" else "🔴 FAILED"
+                    st.write(f"**Status:** {badge}")
+                    st.write(f"**Created At:** `{run_details.get('created_at', 'N/A')}`")
+                    st.write(f"**Duration:** `{run_details.get('duration_seconds', 'N/A')}s`")
+                with col_m3:
+                    st.write(f"**Directory:** `{run_details.get('run_dir', 'N/A')}`")
+                    files_map = run_details.get("available_files", {})
+                    st.write(f"**Files Count:** `{len(files_map)} file(s)`")
+
+            st.markdown("---")
+
+            # Sub-tabs for run assets
+            sub_tab_data, sub_tab_text, sub_tab_ss, sub_tab_anim, sub_tab_files = st.tabs([
+                "📊 Structured Data",
+                "📄 Content & DOM",
+                "🖼️ Screenshot",
+                "🎬 Animations",
+                "📦 All Files & ZIP"
+            ])
+
+            # 1. Structured Data Sub-tab
+            with sub_tab_data:
+                if "extracted_data.json" in files_map:
+                    json_path = files_map["extracted_data.json"]["path"]
+                    try:
+                        with open(json_path, "r", encoding="utf-8") as f:
+                            ext_json = json.load(f)
+
+                        if isinstance(ext_json, list) and ext_json and isinstance(ext_json[0], dict):
+                            st.markdown(f"**Structured Records ({len(ext_json)} items):**")
+                            df_ext = pd.DataFrame(ext_json)
+                            st.dataframe(df_ext, use_container_width=True)
+
+                            col_dl1, col_dl2 = st.columns(2)
+                            with col_dl1:
+                                st.download_button(
+                                    "📥 Download CSV",
+                                    df_ext.to_csv(index=False).encode("utf-8"),
+                                    f"{selected_run_id}_extracted.csv",
+                                    "text/csv"
+                                )
+                            with col_dl2:
+                                st.download_button(
+                                    "📥 Download JSON",
+                                    json.dumps(ext_json, indent=2).encode("utf-8"),
+                                    f"{selected_run_id}_extracted.json",
+                                    "application/json"
+                                )
+                        else:
+                            st.json(ext_json)
+                    except Exception as e:
+                        st.error(f"Could not load extracted data: {e}")
+                else:
+                    st.info("No structured data was extracted during this run.")
+
+            # 2. Content & DOM Sub-tab
+            with sub_tab_text:
+                if "cleaned_dom.txt" in files_map:
+                    dom_path = files_map["cleaned_dom.txt"]["path"]
+                    with open(dom_path, "r", encoding="utf-8", errors="replace") as f:
+                        dom_content = f.read()
+
+                    st.markdown(f"**Cleaned DOM Text ({len(dom_content):,} chars, {len(dom_content.splitlines()):,} lines):**")
+                    st.text_area("Content Preview", dom_content, height=300)
+                    st.download_button(
+                        "📥 Download Cleaned DOM",
+                        dom_content.encode("utf-8"),
+                        f"{selected_run_id}_cleaned.txt",
+                        "text/plain"
+                    )
+                elif "raw_page.html" in files_map:
+                    html_path = files_map["raw_page.html"]["path"]
+                    with open(html_path, "r", encoding="utf-8", errors="replace") as f:
+                        html_content = f.read()
+                    st.markdown(f"**Raw Page HTML ({len(html_content):,} chars):**")
+                    st.text_area("HTML Preview", html_content[:5000], height=300)
+                else:
+                    st.info("No DOM text files in this run.")
+
+            # 3. Screenshot Sub-tab
+            with sub_tab_ss:
+                if "screenshot.png" in files_map:
+                    ss_file_path = files_map["screenshot.png"]["path"]
+                    st.image(ss_file_path, caption=f"Screenshot: {selected_run_id}", use_container_width=True)
+                    with open(ss_file_path, "rb") as f:
+                        st.download_button(
+                            "📥 Download Screenshot",
+                            f.read(),
+                            f"{selected_run_id}_screenshot.png",
+                            "image/png"
+                        )
+                else:
+                    st.info("No screenshot captured during this run.")
+
+            # 4. Animations Sub-tab
+            with sub_tab_anim:
+                if "animation_assets.json" in files_map:
+                    anim_path = files_map["animation_assets.json"]["path"]
+                    with open(anim_path, "r", encoding="utf-8") as f:
+                        anim_json = json.load(f)
+                    st.markdown(f"**Discovered Motion Assets ({anim_json.get('total_assets_count', 0)} Total):**")
+                    st.json(anim_json)
+
+                    if "animations.zip" in files_map:
+                        zip_file_path = files_map["animations.zip"]["path"]
+                        with open(zip_file_path, "rb") as f:
+                            st.download_button(
+                                "📦 Download Animation Assets (.ZIP)",
+                                f.read(),
+                                f"{selected_run_id}_animations.zip",
+                                "application/zip"
+                            )
+                else:
+                    st.info("No animation assets recorded for this run.")
+
+            # 5. All Files & Master ZIP
+            with sub_tab_files:
+                st.markdown("#### 📁 File Inventory")
+                file_rows = [
+                    {
+                        "Filename": fname,
+                        "Size (KB)": round(finfo["size_bytes"] / 1024, 2),
+                        "Modified": finfo["modified"]
+                    }
+                    for fname, finfo in files_map.items()
+                ]
+                st.dataframe(pd.DataFrame(file_rows), use_container_width=True)
+
+                col_zip_btn, col_del_btn = st.columns(2)
+                with col_zip_btn:
+                    zip_buffer = default_output_manager.export_run_zip(selected_run_id)
+                    if zip_buffer:
+                        st.download_button(
+                            "📦 Download Entire Run as ZIP",
+                            data=zip_buffer.getvalue(),
+                            file_name=f"{selected_run_id}_complete.zip",
+                            mime="application/zip",
+                            type="primary",
+                            use_container_width=True
+                        )
+
+                with col_del_btn:
+                    if st.button("🗑️ Delete This Run", key=f"delete_run_{selected_run_id}"):
+                        default_output_manager.delete_run(selected_run_id)
+                        st.success(f"Run {selected_run_id} deleted!")
+                        st.rerun()
 
 
 # ==========================================

@@ -1,9 +1,17 @@
 # mcp_server.py - Model Context Protocol (MCP) Server for OmniScrape AI
+import os
+import sys
 import json
 import logging
 from typing import Optional
 from mcp.server.mcpserver import MCPServer
-from tools import (
+
+# Ensure src/ is on sys.path
+_src_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "src")
+if _src_dir not in sys.path:
+    sys.path.insert(0, _src_dir)
+
+from omniscrape.copilot.tools import (
     tool_scrape_page,
     tool_extract_data,
     tool_take_screenshot,
@@ -12,6 +20,8 @@ from tools import (
     tool_extract_web_animations,
     tool_schedule_scrape_job,
     tool_list_scrape_jobs,
+    tool_list_runs,
+    tool_get_run_output,
     load_plugins
 )
 
@@ -20,7 +30,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(me
 # Initialize MCP Server
 server = MCPServer(
     name="omniscrape-ai",
-    version="2.1.0",
+    version="2.2.0",
     description="OmniScrape AI: Autonomous multi-modal web scraping, Pydantic structured data extraction, animation inspection, and price tracking."
 )
 
@@ -98,6 +108,36 @@ def query_scrape_history(limit: int = 5) -> str:
 
 
 @server.tool()
+def list_runs(limit: int = 10) -> str:
+    """
+    List past scraper execution runs and saved output manifests.
+
+    Parameters:
+        limit: Number of runs to retrieve (default: 10).
+    """
+    try:
+        result = tool_list_runs(limit=limit)
+        return json.dumps(result, indent=2, default=str)
+    except Exception as e:
+        return json.dumps({"error": str(e)})
+
+
+@server.tool()
+def get_run_output(run_id: str) -> str:
+    """
+    Retrieve full metadata, file manifest, and contents for a specific execution run.
+
+    Parameters:
+        run_id: The unique ID of the run folder.
+    """
+    try:
+        result = tool_get_run_output(run_id=run_id)
+        return json.dumps(result, indent=2, default=str)
+    except Exception as e:
+        return json.dumps({"error": str(e)})
+
+
+@server.tool()
 def send_webhook_alert(webhook_url: str, title: str, content: str) -> str:
     """
     Dispatch an alert containing extracted data or price shift notifications to Discord or Slack.
@@ -124,7 +164,7 @@ def extract_web_animations(url: str, mode: str = "fast") -> str:
         mode: Scraping engine: 'fast', 'local', or 'bright_data' (default: 'fast').
     """
     try:
-        result = tool_extract_web_animations(url=url, mode=mode)
+        result = tool_extract_web_animations(url=url)
         return json.dumps(result, indent=2, ensure_ascii=False)
     except Exception as e:
         return json.dumps({"error": str(e), "url": url})
@@ -183,5 +223,4 @@ def list_scrape_jobs() -> str:
 
 
 if __name__ == "__main__":
-    # Runs the MCP server over standard input/output (stdio)
     server.run()

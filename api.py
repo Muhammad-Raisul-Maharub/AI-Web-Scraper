@@ -1,18 +1,36 @@
 # api.py - FastAPI Headless REST API for OmniScrape AI
+import os
+import sys
+import time
 from typing import Optional, List, Dict, Any
 from fastapi import FastAPI, HTTPException, Query, BackgroundTasks
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from scrape import scrape_website, extract_body_content, clean_body_content, extract_animation_assets
-from parse import extract_with_ai
-from schemas import EXTRACTION_TEMPLATES, create_dynamic_model
-from db import save_scrape, save_extraction, get_recent_scrapes, get_recent_extractions, detect_price_changes
-from webhook import send_webhook
+# Ensure src/ is on sys.path
+_src_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "src")
+if _src_dir not in sys.path:
+    sys.path.insert(0, _src_dir)
+
+from omniscrape.engine.scrape import (
+    scrape_website,
+    extract_body_content,
+    clean_body_content,
+    extract_animation_assets,
+    bundle_animations_zip,
+    capture_page_screenshot
+)
+from omniscrape.engine.parse import extract_with_ai
+from omniscrape.models.schemas import EXTRACTION_TEMPLATES, create_dynamic_model
+from omniscrape.storage.db import save_scrape, save_extraction, get_recent_scrapes, get_recent_extractions, detect_price_changes
+from omniscrape.storage.outputs import default_output_manager
+from omniscrape.automation.webhook import send_webhook
+import scheduler
 
 app = FastAPI(
     title="OmniScrape AI REST API",
     description="Headless API for autonomous multi-modal web scraping, structured data extraction, animation inspection, and recurring background monitors.",
-    version="2.1.0"
+    version="2.2.0"
 )
 
 
@@ -40,13 +58,15 @@ def root():
     return {
         "status": "online",
         "service": "OmniScrape AI REST API",
-        "version": "2.1.0",
+        "version": "2.2.0",
         "endpoints": {
             "templates": "/api/templates",
             "scrape": "/api/scrape",
             "scrape_animations": "/api/scrape/animations",
             "extract": "/api/extract",
-            "history": "/api/history"
+            "history": "/api/history",
+            "runs": "/api/runs",
+            "jobs": "/api/jobs"
         }
     }
 
@@ -66,21 +86,32 @@ def list_templates():
 
 @app.post("/api/scrape")
 def scrape_endpoint(req: ScrapeRequest):
-    """Scrape and clean a web page without running AI extraction."""
+    """Scrape and clean a web page and record an isolated run in outputs/runs/."""
+    start_time = time.time()
+    run_info = default_output_manager.create_run(url=req.url, task_type="scrape", mode=req.mode)
+    run_dir = run_info["run_dir"]
+
     try:
         raw_html = scrape_website(req.url, mode=req.mode, timeout=req.timeout)
+        default_output_manager.save_text(run_dir, "raw_page.html", raw_html, category="html")
+
         body = extract_body_content(raw_html)
         cleaned = clean_body_content(body)
         scrape_id = save_scrape(req.url, req.mode, raw_html, cleaned)
+        default_output_manager.save_text(run_dir, "cleaned_dom.txt", cleaned, category="text")
+        default_output_manager.finalize_run(run_dir, status="success", duration_seconds=time.time() - start_time)
 
         return {
             "scrape_id": scrape_id,
+            "run_id": run_info["run_id"],
+            "output_dir": run_dir,
             "url": req.url,
             "raw_characters": len(raw_html),
             "cleaned_characters": len(cleaned),
             "cleaned_preview": cleaned[:500] + ("..." if len(cleaned) > 500 else "")
         }
     except Exception as e:
+        default_output_manager.finalize_run(run_dir, status="failed", duration_seconds=time.time() - start_time, error=str(e))
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -90,23 +121,51 @@ def scrape_animations_endpoint(req: ScrapeRequest):
     Inspect webpage HTML and extract all animation/motion assets:
     Lottie JSON, Rive .riv, animated SVGs, GIFs/videos, animation JS libraries, and CSS keyframes.
     """
+    start_time = time.time()
+    run_info = default_output_manager.create_run(url=req.url, task_type="animations", mode=req.mode)
+    run_dir = run_info["run_dir"]
+
     try:
         raw_html = scrape_website(req.url, mode=req.mode, timeout=req.timeout)
+        default_output_manager.save_text(run_dir, "raw_page.html", raw_html, category="html")
+
         assets = extract_animation_assets(raw_html, base_url=req.url)
+        default_output_manager.save_json(run_dir, "animation_assets.json", assets, category="json")
+
+        zip_bytes = bundle_animations_zip(assets, base_url=req.url)
+        default_output_manager.save_zip(run_dir, "animations.zip", zip_bytes, category="archive")
+        default_output_manager.finalize_run(run_dir, status="success", duration_seconds=time.time() - start_time)
+
+        assets["run_id"] = run_info["run_id"]
+        assets["output_dir"] = run_dir
         return assets
     except Exception as e:
+        default_output_manager.finalize_run(run_dir, status="failed", duration_seconds=time.time() - start_time, error=str(e))
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post("/api/extract")
 def extract_endpoint(req: ExtractRequest, background_tasks: BackgroundTasks):
     """End-to-end web scraping and structured AI extraction."""
+    start_time = time.time()
+    run_info = default_output_manager.create_run(
+        url=req.url,
+        task_type="extract",
+        mode=req.mode,
+        template=req.template,
+        prompt=req.prompt
+    )
+    run_dir = run_info["run_dir"]
+
     try:
         # 1. Scrape & clean DOM
         raw_html = scrape_website(req.url, mode=req.mode)
+        default_output_manager.save_text(run_dir, "raw_page.html", raw_html, category="html")
+
         body = extract_body_content(raw_html)
         cleaned = clean_body_content(body)
         scrape_id = save_scrape(req.url, req.mode, raw_html, cleaned)
+        default_output_manager.save_text(run_dir, "cleaned_dom.txt", cleaned, category="text")
 
         # 2. Determine schema
         schema_class = None
@@ -136,6 +195,12 @@ def extract_endpoint(req: ExtractRequest, background_tasks: BackgroundTasks):
 
         # 4. Save extraction and detect price changes if applicable
         save_extraction(scrape_id, req.url, req.template or "custom", instruction, result)
+        default_output_manager.save_json(run_dir, "extracted_data.json", result, category="json")
+        if isinstance(result, list) and result:
+            try:
+                default_output_manager.save_csv(run_dir, "extracted_data.csv", result, category="tabular")
+            except Exception:
+                pass
 
         price_changes = []
         if isinstance(result, list):
@@ -150,8 +215,12 @@ def extract_endpoint(req: ExtractRequest, background_tasks: BackgroundTasks):
                 result
             )
 
+        default_output_manager.finalize_run(run_dir, status="success", duration_seconds=time.time() - start_time)
+
         return {
             "scrape_id": scrape_id,
+            "run_id": run_info["run_id"],
+            "output_dir": run_dir,
             "url": req.url,
             "provider": req.provider,
             "model": req.model,
@@ -161,16 +230,62 @@ def extract_endpoint(req: ExtractRequest, background_tasks: BackgroundTasks):
         }
 
     except Exception as e:
+        default_output_manager.finalize_run(run_dir, status="failed", duration_seconds=time.time() - start_time, error=str(e))
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/api/history")
 def history_endpoint(limit: int = Query(10, ge=1, le=50)):
-    """Retrieve recent scrape and extraction records."""
+    """Retrieve recent scrape and extraction database records."""
     return {
         "recent_scrapes": get_recent_scrapes(limit=limit),
         "recent_extractions": get_recent_extractions(limit=limit)
     }
+
+
+# ==============================================================================
+# RUN OUTPUT EXPLORER ENDPOINTS
+# ==============================================================================
+
+@app.get("/api/runs")
+def list_runs_endpoint(limit: int = Query(20, ge=1, le=100)):
+    """List all saved execution runs in the outputs directory."""
+    runs = default_output_manager.list_runs(limit=limit)
+    return {
+        "total_runs": len(runs),
+        "runs": runs
+    }
+
+
+@app.get("/api/runs/{run_id}")
+def get_run_endpoint(run_id: str):
+    """Retrieve detailed manifest and file map for a specific run ID."""
+    run = default_output_manager.get_run(run_id)
+    if not run:
+        raise HTTPException(status_code=404, detail=f"Run '{run_id}' not found.")
+    return run
+
+
+@app.get("/api/runs/{run_id}/download")
+def download_run_zip_endpoint(run_id: str):
+    """Download the full run output folder as a ZIP file."""
+    buf = default_output_manager.export_run_zip(run_id)
+    if not buf:
+        raise HTTPException(status_code=404, detail=f"Run '{run_id}' not found.")
+    return StreamingResponse(
+        buf,
+        media_type="application/zip",
+        headers={"Content-Disposition": f"attachment; filename={run_id}.zip"}
+    )
+
+
+@app.delete("/api/runs/{run_id}")
+def delete_run_endpoint(run_id: str):
+    """Delete a run folder and its contents."""
+    success = default_output_manager.delete_run(run_id)
+    if not success:
+        raise HTTPException(status_code=404, detail=f"Run '{run_id}' not found.")
+    return {"success": True, "message": f"Run '{run_id}' deleted."}
 
 
 # ==============================================================================
@@ -192,14 +307,12 @@ class CreateJobRequest(BaseModel):
 @app.get("/api/jobs")
 def list_jobs_endpoint():
     """List all scheduled recurring scrape jobs with their status and next run times."""
-    import scheduler
     return {"jobs": scheduler.list_jobs()}
 
 
 @app.post("/api/jobs")
 def create_job_endpoint(req: CreateJobRequest):
     """Register a new recurring scrape job for background execution."""
-    import scheduler
     try:
         job_id = scheduler.create_job(
             name=req.name,
@@ -224,7 +337,6 @@ def create_job_endpoint(req: CreateJobRequest):
 @app.get("/api/jobs/{job_id}/logs")
 def get_job_logs_endpoint(job_id: int, limit: int = Query(20, ge=1, le=100)):
     """Retrieve execution history logs for a specific scheduled job."""
-    import scheduler
     job = scheduler.get_job(job_id)
     if not job:
         raise HTTPException(status_code=404, detail=f"Job #{job_id} not found.")
@@ -237,7 +349,6 @@ def get_job_logs_endpoint(job_id: int, limit: int = Query(20, ge=1, le=100)):
 @app.post("/api/jobs/{job_id}/run")
 def trigger_job_endpoint(job_id: int):
     """Manually trigger immediate execution of a scheduled scrape job."""
-    import scheduler
     try:
         result = scheduler.trigger_job_now(job_id)
         return result
@@ -250,7 +361,6 @@ def trigger_job_endpoint(job_id: int):
 @app.patch("/api/jobs/{job_id}/toggle")
 def toggle_job_endpoint(job_id: int):
     """Pause or resume a scheduled job."""
-    import scheduler
     success = scheduler.toggle_job(job_id)
     if not success:
         raise HTTPException(status_code=404, detail=f"Job #{job_id} not found.")
@@ -265,9 +375,7 @@ def toggle_job_endpoint(job_id: int):
 @app.delete("/api/jobs/{job_id}")
 def delete_job_endpoint(job_id: int):
     """Delete a scheduled job and its execution history."""
-    import scheduler
     success = scheduler.delete_job(job_id)
     if not success:
         raise HTTPException(status_code=404, detail=f"Job #{job_id} not found.")
     return {"success": True, "message": f"Job #{job_id} deleted."}
-

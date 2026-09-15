@@ -14,6 +14,11 @@ __pycache__/
 # Local SQLite databases & cache
 *.db
 *.sqlite3
+data/*.db
+data/*.sqlite3
+
+# Run outputs and temporary files
+outputs/runs/
 
 # Screenshots
 screenshots/

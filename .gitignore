@@ -59,6 +59,14 @@ Thumbs.db
 # SQLite database & local storage
 *.db
 *.sqlite3
+data/*.db
+data/*.sqlite3
+!data/.gitkeep
+
+# Run outputs
+outputs/runs/*
+!outputs/runs/.gitkeep
+!outputs/.gitkeep
 
 # Local screenshots directory
 screenshots/

@@ -40,8 +40,8 @@ RUN pip install --no-cache-dir --upgrade pip && \
 # Copy application source code
 COPY . .
 
-# Create volume mount points for database and screenshots
-RUN mkdir -p /app/screenshots /app/data
+# Create volume mount points for database, run outputs, and screenshots
+RUN mkdir -p /app/data /app/outputs /app/screenshots
 
 # Expose ports for Streamlit (8501) and FastAPI (8000)
 EXPOSE 8501 8000

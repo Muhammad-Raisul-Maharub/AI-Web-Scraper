@@ -3,6 +3,9 @@ import json
 import zipfile
 import io
 import unittest
+import os
+import shutil
+import tempfile
 from fastapi.testclient import TestClient
 
 from scrape import (
@@ -14,6 +17,7 @@ from scrape import (
     bundle_animations_zip
 )
 from tools import get_all_tools, execute_tool
+from outputs import RunOutputManager, default_output_manager
 from api import app
 
 SAMPLE_ANIMATION_HTML = """
@@ -225,6 +229,97 @@ class TestAnimationAndScraper(unittest.TestCase):
         # 4. Delete job
         del_resp = client.delete(f"/api/jobs/{job_id}")
         self.assertEqual(del_resp.status_code, 200)
+
+    def test_run_output_manager_lifecycle(self):
+        temp_dir = tempfile.mkdtemp(prefix="test_runs_")
+        try:
+            mgr = RunOutputManager(base_dir=temp_dir)
+
+            # 1. Create run
+            run_info = mgr.create_run("https://example.com/test", task_type="scrape_and_extract")
+            run_dir = run_info["run_dir"]
+            run_id = run_info["run_id"]
+            self.assertTrue(os.path.exists(run_dir))
+
+            # 2. Save artifacts
+            mgr.save_text(run_dir, "cleaned_dom.txt", "Sample clean DOM text")
+            mgr.save_json(run_dir, "extracted_data.json", [{"title": "Item 1", "price": 10.99}])
+            mgr.save_csv(run_dir, "extracted_data.csv", [{"title": "Item 1", "price": 10.99}])
+            mgr.save_binary(run_dir, "test.bin", b"\x00\x01\x02\x03")
+
+            # 3. Finalize run
+            mgr.finalize_run(run_dir, status="success", duration_seconds=1.23, extra_meta={"source": "unittest"})
+
+            # 4. Read metadata
+            run_record = mgr.get_run(run_id)
+            self.assertIsNotNone(run_record)
+            self.assertEqual(run_record["metadata"]["status"], "success")
+            self.assertEqual(run_record["metadata"]["url"], "https://example.com/test")
+            self.assertIn("cleaned_dom.txt", run_record["metadata"]["files"])
+            self.assertIn("extracted_data.json", run_record["metadata"]["files"])
+
+            # 5. List runs
+            runs = mgr.list_runs()
+            self.assertGreaterEqual(len(runs), 1)
+            self.assertEqual(runs[0]["id"], run_id)
+
+            # 6. Export zip
+            zip_buf = mgr.export_run_zip(run_id)
+            self.assertIsNotNone(zip_buf)
+            with zipfile.ZipFile(zip_buf, "r") as zf:
+                names = zf.namelist()
+                self.assertIn("metadata.json", names)
+                self.assertIn("cleaned_dom.txt", names)
+                self.assertIn("extracted_data.json", names)
+
+            # 7. Delete run
+            deleted = mgr.delete_run(run_id)
+            self.assertTrue(deleted)
+            self.assertIsNone(mgr.get_run(run_id))
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
+    def test_api_runs_endpoints(self):
+        client = TestClient(app)
+        # Create a test run using default_output_manager
+        run_info = default_output_manager.create_run("https://quotes.toscrape.com/api-test", task_type="test")
+        run_dir = run_info["run_dir"]
+        run_id = run_info["run_id"]
+        default_output_manager.save_text(run_dir, "test.txt", "Hello API test")
+        default_output_manager.finalize_run(run_dir, status="success", duration_seconds=0.5)
+
+        # 1. List runs
+        resp = client.get("/api/runs")
+        self.assertEqual(resp.status_code, 200)
+        runs = resp.json()["runs"]
+        self.assertTrue(any(r["id"] == run_id for r in runs))
+
+        # 2. Get run details
+        detail_resp = client.get(f"/api/runs/{run_id}")
+        self.assertEqual(detail_resp.status_code, 200)
+        detail_data = detail_resp.json()
+        self.assertEqual(detail_data["id"], run_id)
+        self.assertEqual(detail_data["metadata"]["url"], "https://quotes.toscrape.com/api-test")
+
+        # 3. Download zip
+        download_resp = client.get(f"/api/runs/{run_id}/download")
+        self.assertEqual(download_resp.status_code, 200)
+        self.assertEqual(download_resp.headers["content-type"], "application/zip")
+
+        # 4. Delete run
+        del_resp = client.delete(f"/api/runs/{run_id}")
+        self.assertEqual(del_resp.status_code, 200)
+
+    def test_run_tools_registered_and_executable(self):
+        tools = get_all_tools()
+        self.assertIn("list_runs", tools)
+        self.assertIn("get_run_output", tools)
+
+        # Execute list_runs tool
+        res = execute_tool("list_runs", {"limit": 5})
+        self.assertIsInstance(res, dict)
+        self.assertIn("runs", res)
+        self.assertIsInstance(res["runs"], list)
 
 
 if __name__ == "__main__":

@@ -1,0 +1,59 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "omniscrape-ai"
+version = "2.0.0"
+description = "Universal AI Web Scraper, Crawler, Visual Motion Extractor & Autonomous Copilot"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [
+    { name = "OmniScrape Team" }
+]
+keywords = [
+    "web-scraping",
+    "crawler",
+    "ai",
+    "llm",
+    "gemini",
+    "openai",
+    "ollama",
+    "lottie",
+    "rive",
+    "animations",
+    "fastapi",
+    "streamlit",
+    "mcp"
+]
+dependencies = [
+    "streamlit>=1.35.0",
+    "selenium>=4.20.0",
+    "webdriver-manager>=4.0.1",
+    "beautifulsoup4>=4.12.3",
+    "requests>=2.31.0",
+    "langchain>=0.2.0",
+    "langchain-ollama>=0.1.0",
+    "google-genai>=0.1.0",
+    "openai>=1.30.0",
+    "pydantic>=2.9.0",
+    "fastapi>=0.110.0",
+    "uvicorn>=0.28.0",
+    "pandas>=2.2.0",
+    "matplotlib>=3.8.0",
+    "pillow>=10.0.0",
+    "lxml>=5.2.0",
+    "python-dotenv>=1.0.0",
+    "mcp>=2.0.0"
+]
+
+[project.scripts]
+omniscrape = "cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
