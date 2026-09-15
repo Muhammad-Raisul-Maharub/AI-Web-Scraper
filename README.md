@@ -46,8 +46,8 @@ An autonomous, multi-modal web scraping, animation asset extraction, and backgro
 
 ### 1. Clone & Setup Virtual Environment
 ```bash
-git clone https://github.com/Muhammad-Raisul-Maharub/AI-Web-Scraper.git
-cd AI-Web-Scraper
+git clone https://github.com/Muhammad-Raisul-Maharub/Omni-Scrape-AI.git
+cd Omni-Scrape-AI
 
 # Windows
 python -m venv venv

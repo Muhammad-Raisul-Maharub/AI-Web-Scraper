@@ -546,8 +546,8 @@ with tab1:
                             result = extract_with_vision(
                                 image_path=st.session_state.current_screenshot,
                                 parse_description=parse_prompt,
-                                api_key=str(api_key or ""),
-                                model_name=str(model_name or "gemini-2.5-flash"),
+                                api_key=api_key or "",
+                                model_name=model_name or "gemini-2.5-flash",
                                 schema_class=schema_class
                             )
                         # Text DOM Extraction Mode
@@ -556,8 +556,8 @@ with tab1:
                                 dom_content=dom_text,
                                 parse_description=parse_prompt,
                                 provider=provider_key,
-                                model_name=str(model_name or ""),
-                                api_key=str(api_key or ""),
+                                model_name=model_name or "",
+                                api_key=api_key or "",
                                 output_format=fmt_code,
                                 schema_class=schema_class
                             )
@@ -1066,7 +1066,7 @@ with tab_scheduler:
                         scrape_type=sched_type,
                         template=template_val,
                         prompt=sched_prompt.strip() if sched_prompt else None,
-                        interval_minutes=int(sched_interval),
+                        interval_minutes=sched_interval,
                         webhook_url=sched_webhook.strip() if sched_webhook else None,
                         alert_on_change_only=sched_alert_change
                     )

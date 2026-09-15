@@ -2,7 +2,7 @@
 import os
 import json
 import logging
-from typing import List, Dict, Any, Optional, Callable
+from typing import List, Dict, Any, Optional, Callable, cast
 from dotenv import load_dotenv
 
 try:
@@ -97,7 +97,7 @@ def _run_with_gemini(
         # Check for function call
         if model_part and hasattr(model_part, "function_call") and model_part.function_call:
             fc = model_part.function_call
-            tool_name = str(fc.name or "")
+            tool_name = fc.name or ""
             tool_args: Dict[str, Any] = dict(fc.args or {}) if hasattr(fc, "args") and fc.args else {}
 
             if on_tool_call:
@@ -153,15 +153,15 @@ def _run_with_openai(
     from openai import OpenAI
     client = OpenAI(api_key=key)
 
-    tools = get_openai_tool_definitions()
+    tools: Any = get_openai_tool_definitions()
     formatted_msgs: List[Any] = [{"role": "system", "content": COPILOT_SYSTEM_PROMPT}] + list(messages)
     tool_executions = []
 
     for _ in range(4):
-        completion = client.chat.completions.create(
+        completion: Any = cast(Any, client.chat.completions).create(
             model=model_name or "gpt-4o-mini",
             messages=formatted_msgs,
-            tools=tools,  # type: ignore
+            tools=tools,
             temperature=0.2
         )
 

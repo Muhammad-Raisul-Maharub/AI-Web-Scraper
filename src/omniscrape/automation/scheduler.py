@@ -109,7 +109,7 @@ def create_job(
             next_run
         ))
         conn.commit()
-        return int(cursor.lastrowid or 0)
+        return cursor.lastrowid or 0
 
 
 def list_jobs(active_only: bool = False) -> List[Dict[str, Any]]:
